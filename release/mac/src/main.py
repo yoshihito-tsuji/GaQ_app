@@ -67,7 +67,7 @@ async def root():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaQ Offline Transcriber - 完全オフラインAI文字おこし</title>
+    <title>GaQ Offline Transcriber - オフラインAI文字おこし</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦜</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -412,7 +412,7 @@ async def root():
                 <img src="/static/icon.png" alt="GaQ Logo" class="logo-icon">
                 GaQ Offline Transcriber
             </h1>
-            <p class="subtitle">完全オフラインAI文字おこしアプリケーション</p>
+            <p class="subtitle">オフラインAI文字おこしアプリケーション</p>
 
             <div class="upload-area" id="uploadArea">
                 <p>📁 音声ファイルをドラッグ&ドロップ<br>または<br>クリックして選択</p>

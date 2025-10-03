@@ -1,6 +1,6 @@
 """
 GaQ Offline Transcriber - ネイティブアプリ版メインエントリーポイント
-pywebview + FastAPI による完全オフライン文字起こしアプリ
+pywebview + FastAPI によるオフライン文字起こしアプリ
 """
 
 import logging
