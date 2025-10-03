@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# GaQ Offline Transcriber - 軽量インストーラーランチャー
+# macOS用シェルスクリプト + AppleScript方式
+#
+
+# エラー時は即座に終了
+set -e
+
+# スクリプトのディレクトリを取得
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+RESOURCES_DIR="$SCRIPT_DIR/../Resources"
+APP_DIR="$HOME/.gaq"
+
+# ログファイル
+LOG_FILE="$APP_DIR/install.log"
+mkdir -p "$APP_DIR"
+
+# ログ関数
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# エラーハンドリング
+error_exit() {
+    log "ERROR: $1"
+    osascript -e "display dialog \"エラーが発生しました:\n\n$1\n\n詳細はログファイルを確認してください:\n$LOG_FILE\" buttons {\"OK\"} default button 1 with icon stop with title \"GaQ Installer\""
+    exit 1
+}
+
+# 進捗ダイアログ表示
+show_progress() {
+    local message="$1"
+    log "$message"
+    osascript -e "display notification \"$message\" with title \"GaQ Installer\" sound name \"Ping\""
+}
+
+# メイン処理
+main() {
+    log "=== GaQ Offline Transcriber インストーラー起動 ==="
+
+    # 初回インストールか確認
+    if [ -f "$APP_DIR/.installed" ]; then
+        log "既にインストール済み - GaQアプリを起動します"
+        show_progress "GaQ Offline Transcriber を起動中..."
+
+        # GaQアプリを起動
+        if [ -f "$APP_DIR/run_gaq.sh" ]; then
+            bash "$APP_DIR/run_gaq.sh" &
+            log "GaQアプリ起動完了"
+        else
+            error_exit "起動スクリプトが見つかりません。再インストールしてください。"
+        fi
+    else
+        # 初回インストール
+        show_progress "GaQ Offline Transcriber をインストール中..."
+        log "初回インストールを開始します"
+
+        # セットアップスクリプトを実行
+        if [ -f "$RESOURCES_DIR/setup.sh" ]; then
+            bash "$RESOURCES_DIR/setup.sh" "$RESOURCES_DIR" "$APP_DIR" || error_exit "セットアップに失敗しました"
+        else
+            error_exit "セットアップスクリプトが見つかりません"
+        fi
+
+        # インストール完了マーク
+        touch "$APP_DIR/.installed"
+        log "インストール完了"
+
+        # 完了ダイアログ
+        osascript -e "display dialog \"GaQ Offline Transcriber のインストールが完了しました！\n\nブラウザが自動的に起動します。\n音声ファイルをドラッグ&ドロップして文字起こしを開始してください。\" buttons {\"OK\"} default button 1 with icon note with title \"GaQ Installer\""
+
+        # GaQアプリを起動
+        bash "$APP_DIR/run_gaq.sh" &
+    fi
+
+    exit 0
+}
+
+# メイン処理実行
+main "$@"

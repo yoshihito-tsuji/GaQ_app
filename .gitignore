@@ -1,0 +1,68 @@
+# ビルド成果物（大容量ファイル）
+distribution/*.dmg
+distribution/*.zip
+*.dmg
+*.zip
+
+# アプリケーションバンドル
+build_standard/GaQ Offline Transcriber.app/
+dmg_contents/
+release/mac/dist/
+release/mac/build/
+release/windows/dist/
+release/windows/build/
+
+# Python環境（大容量）
+*/python/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.tar.gz
+cpython-*.tar.gz
+
+# モデルファイル
+*.bin
+models/
+
+# ログファイル
+*.log
+logs/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 一時ファイル
+tmp/
+temp/
+*.tmp
+
+# キャッシュ
+.gaq/
+*.cache
+
+# バックアップ
+*.backup
+*_backup/
+*_old/
+backup_*/
+*_backup_*.app/
+
+# アーカイブ（大容量の開発履歴バックアップ）
+archive/
+
+# その他除外ファイル
+=1.0.0
+=2.25.0
