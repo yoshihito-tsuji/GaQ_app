@@ -89,11 +89,14 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         sys.exit(1)
 
     # アイコンファイルのパス（存在すれば設定）
-    icon_path = Path(__file__).parent / "icon.png"
+    icon_path = Path(__file__).parent / "icon.ico"
     icon = str(icon_path) if icon_path.exists() else None
 
     # Webviewウィンドウを作成
     logger.info(f"🖥️ Webviewウィンドウ起動: {url}")
+
+    # pywebviewのバージョンによってはiconパラメータが使えないため、
+    # まずウィンドウを作成してから、後でアイコンを設定する
     window = webview.create_window(
         title="GaQ Offline Transcriber",
         url=url,
@@ -102,10 +105,66 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         resizable=True,
         frameless=False,  # タイトルバーを表示
         easy_drag=True,  # ドラッグ可能
+        js_api=Api(),  # JavaScript APIを公開
     )
 
     # Webviewを起動（メインスレッド）
-    webview.start(debug=False)
+    # デバッグモードを有効にして問題を診断
+    webview.start(debug=True)
+
+
+class Api:
+    """pywebview JavaScript API"""
+
+    def save_file(self, content, default_filename):
+        """
+        ファイル保存ダイアログを表示してファイルを保存
+
+        Args:
+            content: 保存する内容
+            default_filename: デフォルトのファイル名
+
+        Returns:
+            dict: {'success': bool, 'path': str or None, 'message': str}
+        """
+        try:
+            # ファイル保存ダイアログを表示
+            file_path = webview.windows[0].create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=default_filename,
+                file_types=("Text Files (*.txt)",),
+            )
+
+            if file_path:
+                # ファイルパスがタプルで返される場合があるので、最初の要素を取得
+                if isinstance(file_path, tuple):
+                    file_path = file_path[0]
+
+                # ファイルに書き込み
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+
+                logger.info(f"✅ ファイルを保存しました: {file_path}")
+                return {
+                    "success": True,
+                    "path": str(file_path),
+                    "message": "ファイルを保存しました",
+                }
+            else:
+                logger.info("ℹ️ ファイル保存がキャンセルされました")
+                return {
+                    "success": False,
+                    "path": None,
+                    "message": "キャンセルされました",
+                }
+
+        except Exception as e:
+            logger.error(f"❌ ファイル保存エラー: {e}")
+            return {
+                "success": False,
+                "path": None,
+                "message": f"保存エラー: {str(e)}",
+            }
 
 
 def main():

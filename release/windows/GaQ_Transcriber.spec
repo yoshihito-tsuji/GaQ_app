@@ -69,7 +69,7 @@ exe = EXE(
     target_arch='x64',  # Windows x64アーキテクチャ
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(src_dir / 'icon.png'),
+    icon=str(src_dir / 'icon.ico'),
 )
 
 coll = COLLECT(

@@ -6,10 +6,22 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
+
+# ===== Windows権限エラー対策（WinError 1314完全解決） =====
+# シンボリックリンクを完全に無効化
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+
+# Hugging Face Hubの設定
+os.environ["TRANSFORMERS_CACHE"] = str(Path.home() / ".cache" / "huggingface")
+os.environ["HF_HOME"] = str(Path.home() / ".cache" / "huggingface")
+# ===========================================================
 
 import uvicorn
 from config import ALLOWED_EXTENSIONS, AVAILABLE_MODELS, DEFAULT_MODEL, HOST, PORT, UPLOAD_DIR
@@ -44,6 +56,39 @@ static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+
+@app.on_event("startup")
+async def startup_event():
+    """アプリ起動時の初期化処理"""
+    logger.info("🚀 アプリケーション起動時の初期化...")
+
+    # 不完全なダウンロードファイルを削除（WinError 1314対策）
+    cache_path = Path.home() / ".cache" / "huggingface" / "hub"
+    if cache_path.exists():
+        # .tmpファイル（ダウンロード中断ファイル）を削除
+        tmp_count = 0
+        for tmp_file in cache_path.glob("**/*.tmp"):
+            try:
+                tmp_file.unlink()
+                tmp_count += 1
+            except Exception as e:
+                logger.debug(f"削除失敗: {tmp_file} - {e}")
+
+        # .lockファイル（ロックファイル）を削除
+        lock_count = 0
+        for lock_file in cache_path.glob("**/*.lock"):
+            try:
+                lock_file.unlink()
+                lock_count += 1
+            except Exception as e:
+                logger.debug(f"削除失敗: {lock_file} - {e}")
+
+        if tmp_count > 0 or lock_count > 0:
+            logger.info(f"✅ キャッシュクリーンアップ完了: .tmp={tmp_count}, .lock={lock_count}")
+        else:
+            logger.debug("キャッシュは既にクリーンです")
+
+
 # グローバル変数：最後の文字起こし結果を保存
 last_transcription = {"text": "", "processing_time": 0, "timestamp": None}
 
@@ -67,7 +112,7 @@ async def root():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaQ Offline Transcriber - オフラインAI文字おこし</title>
+    <title>GaQ Offline Transcriber - オフラインAI文字起こし</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦜</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -202,7 +247,16 @@ async def root():
             .progress-bar-fill {
                 height: 100%;
                 width: 0%;
-                background: linear-gradient(135deg, #7ab55c 0%, #5a9245 100%);
+                background: linear-gradient(
+                    90deg,
+                    #7ab55c 0%,
+                    #8bc46d 30%,
+                    #9dd17f 50%,
+                    #8bc46d 70%,
+                    #7ab55c 100%
+                );
+                background-size: 200% 100%;
+                animation: shine 5s infinite linear;
                 transition: width 0.3s ease;
                 border-radius: 15px;
                 display: flex;
@@ -211,6 +265,14 @@ async def root():
                 color: white;
                 font-weight: bold;
                 font-size: 14px;
+            }
+            @keyframes shine {
+                0% {
+                    background-position: -200% 0;
+                }
+                100% {
+                    background-position: 200% 0;
+                }
             }
             .progress-status {
                 margin-top: 10px;
@@ -404,6 +466,109 @@ async def root():
                 font-size: 11px !important;
                 padding: 6px 10px !important;
             }
+            /* 画面内通知（トースト）のスタイル */
+            .notification {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 16px 24px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                font-size: 15px;
+                font-weight: 500;
+                z-index: 10000;
+                opacity: 0;
+                transform: translateY(-20px);
+                transition: all 0.3s ease;
+                max-width: 400px;
+            }
+            .notification.show {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            .notification.success {
+                background-color: #7ab55c;
+                color: white;
+            }
+            .notification.error {
+                background-color: #e74c3c;
+                color: white;
+            }
+            .notification.warning {
+                background-color: #f39c12;
+                color: white;
+            }
+            .notification.info {
+                background-color: #3498db;
+                color: white;
+            }
+            /* カスタム確認ダイアログのスタイル */
+            .custom-dialog-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 20000;
+                justify-content: center;
+                align-items: center;
+            }
+            .custom-dialog-overlay.show {
+                display: flex;
+            }
+            .custom-dialog {
+                background: white;
+                border-radius: 12px;
+                padding: 24px;
+                max-width: 500px;
+                min-width: 400px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            }
+            .custom-dialog-title {
+                font-size: 18px;
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 16px;
+                border-bottom: 2px solid #7ab55c;
+                padding-bottom: 12px;
+            }
+            .custom-dialog-message {
+                font-size: 14px;
+                color: #34495e;
+                line-height: 1.6;
+                margin-bottom: 24px;
+                white-space: pre-line;
+            }
+            .custom-dialog-buttons {
+                display: flex;
+                gap: 12px;
+                justify-content: flex-end;
+            }
+            .custom-dialog-btn {
+                padding: 10px 24px;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            .custom-dialog-btn-ok {
+                background: #7ab55c;
+                color: white;
+            }
+            .custom-dialog-btn-ok:hover {
+                background: #6a9d4f;
+            }
+            .custom-dialog-btn-cancel {
+                background: #95a5a6;
+                color: white;
+            }
+            .custom-dialog-btn-cancel:hover {
+                background: #7f8c8d;
+            }
         </style>
     </head>
     <body>
@@ -412,7 +577,7 @@ async def root():
                 <img src="/static/icon.png" alt="GaQ Logo" class="logo-icon">
                 GaQ Offline Transcriber
             </h1>
-            <p class="subtitle">オフラインAI文字おこしアプリケーション</p>
+            <p class="subtitle">オフラインAI文字起こしアプリケーション</p>
 
             <div class="upload-area" id="uploadArea">
                 <p>📁 音声ファイルをドラッグ&ドロップ<br>または<br>クリックして選択</p>
@@ -433,7 +598,7 @@ async def root():
 
             <button id="transcribeBtn" disabled>文字起こし開始</button>
 
-            <p class="credit">公立はこだて未来大学：辻研究室</p>
+            <p class="credit">公立はこだて未来大学：辻研究室（tsuji-lab.net）</p>
 
             <div class="progress" id="progress">
                 <p>🔄 処理中...</p>
@@ -467,6 +632,40 @@ async def root():
 
         <script>
             console.log('GaQ JavaScript starting...');
+
+            // カスタム確認ダイアログ関数
+            function showCustomConfirm(title, message) {
+                return new Promise(function(resolve) {
+                    var overlay = document.getElementById('customDialogOverlay');
+                    var titleEl = document.getElementById('customDialogTitle');
+                    var messageEl = document.getElementById('customDialogMessage');
+                    var okBtn = document.getElementById('customDialogOk');
+                    var cancelBtn = document.getElementById('customDialogCancel');
+
+                    titleEl.textContent = title;
+                    messageEl.textContent = message;
+                    overlay.classList.add('show');
+
+                    function cleanup() {
+                        overlay.classList.remove('show');
+                        okBtn.removeEventListener('click', handleOk);
+                        cancelBtn.removeEventListener('click', handleCancel);
+                    }
+
+                    function handleOk() {
+                        cleanup();
+                        resolve(true);
+                    }
+
+                    function handleCancel() {
+                        cleanup();
+                        resolve(false);
+                    }
+
+                    okBtn.addEventListener('click', handleOk);
+                    cancelBtn.addEventListener('click', handleCancel);
+                });
+            }
 
             var uploadArea = document.getElementById('uploadArea');
             var fileInput = document.getElementById('fileInput');
@@ -504,6 +703,8 @@ async def root():
             // ページ全体でドラッグ&ドロップのデフォルト動作を防止（Safari対応）
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function(eventName) {
                 document.body.addEventListener(eventName, preventDefaults, false);
+                window.addEventListener(eventName, preventDefaults, false);
+                document.addEventListener(eventName, preventDefaults, false);
             });
 
             // クリックでファイル選択（Safari対応：イベント伝播を防止）
@@ -589,11 +790,18 @@ async def root():
                     .then(function(response) { return response.json(); })
                     .then(function(data) {
                         if (!data.exists) {
-                            var message = 'モデル「' + model + '」をダウンロードします（約' + data.size_gb + 'GB、数分かかります）。\\n続行しますか？';
+                            var modelDisplayName = model === 'large-v3' ? 'Faster-Whisper Large-v3' : 'Faster-Whisper Medium';
+                            var message = `音声認識AIモデル「${modelDisplayName}」をダウンロードする必要があります。
+サイズ: 約${data.size_gb}GB
 
-                            if (confirm(message)) {
-                                startTranscription(selectedFile, model);
-                            }
+初回使用時に自動でダウンロードされます（数分かかります）。
+続行しますか？`;
+
+                            showCustomConfirm('音声認識AIモデルを管理します', message).then(function(result) {
+                                if (result) {
+                                    startTranscription(selectedFile, model);
+                                }
+                            });
                         } else {
                             startTranscription(selectedFile, model);
                         }
@@ -698,56 +906,93 @@ async def root():
                 });
             }
 
-            function copyResult() {
-                navigator.clipboard.writeText(resultText.textContent);
-                alert('クリップボードにコピーしました');
+            // 画面内通知を表示する関数
+            function showNotification(message, type) {
+                // 既存の通知を削除
+                var existingNotification = document.querySelector('.notification');
+                if (existingNotification) {
+                    existingNotification.remove();
+                }
+
+                // 新しい通知要素を作成
+                var notification = document.createElement('div');
+                notification.className = 'notification ' + (type || 'info');
+                notification.textContent = message;
+                document.body.appendChild(notification);
+
+                // アニメーション表示
+                setTimeout(function() {
+                    notification.classList.add('show');
+                }, 10);
+
+                // 3秒後に自動で消す
+                setTimeout(function() {
+                    notification.classList.remove('show');
+                    setTimeout(function() {
+                        notification.remove();
+                    }, 300);
+                }, 3000);
             }
 
-            // 保存ボタンのイベントリスナー
-            saveBtn.addEventListener('click', function() {
+            function copyResult() {
+                navigator.clipboard.writeText(resultText.textContent);
+                showNotification('✅ 文字起こし結果をクリップボードにコピーしました', 'success');
+            }
+
+            // 保存先を指定して保存する関数（pywebviewのファイルダイアログ使用）
+            function saveTranscriptionWithDialog() {
                 saveBtn.disabled = true;
                 saveBtn.textContent = '保存中...';
 
-                fetch('/save-transcription', {
-                    method: 'POST'
-                })
-                .then(function(response) {
-                    if (!response.ok) {
-                        throw new Error('保存に失敗しました');
-                    }
-                    return response.blob();
-                })
-                .then(function(blob) {
-                    // ダウンロード
-                    var url = window.URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = url;
+                fetch('/get-transcription-text')
+                    .then(function(response) {
+                        if (!response.ok) {
+                            throw new Error('文字起こし結果の取得に失敗しました');
+                        }
+                        return response.json();
+                    })
+                    .then(function(data) {
+                        // pywebview APIが利用可能か確認
+                        if (window.pywebview && window.pywebview.api) {
+                            // pywebviewのファイルダイアログを使用
+                            window.pywebview.api.save_file(data.text, data.filename).then(function(result) {
+                                if (result.success) {
+                                    showNotification('✅ ファイルを保存しました: ' + result.path, 'success');
+                                } else if (result.message === 'キャンセルされました') {
+                                    showNotification('ℹ️ 保存がキャンセルされました', 'info');
+                                } else {
+                                    showNotification('❌ ' + result.message, 'error');
+                                }
+                                saveBtn.disabled = false;
+                                saveBtn.textContent = '💾 結果を保存（txt形式）';
+                            });
+                        } else {
+                            // フォールバック: 従来のダウンロード方法
+                            var blob = new Blob([data.text], {type: 'text/plain;charset=utf-8'});
+                            var url = window.URL.createObjectURL(blob);
+                            var a = document.createElement('a');
+                            a.href = url;
+                            a.download = data.filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            window.URL.revokeObjectURL(url);
 
-                    // ファイル名生成（タイムスタンプ付き）
-                    var now = new Date();
-                    var timestamp = now.getFullYear() +
-                                   ('0' + (now.getMonth() + 1)).slice(-2) +
-                                   ('0' + now.getDate()).slice(-2) + '_' +
-                                   ('0' + now.getHours()).slice(-2) +
-                                   ('0' + now.getMinutes()).slice(-2) +
-                                   ('0' + now.getSeconds()).slice(-2);
-                    a.download = 'transcription_' + timestamp + '.txt';
+                            showNotification('✅ ファイルをダウンロードしました', 'success');
+                            saveBtn.disabled = false;
+                            saveBtn.textContent = '💾 結果を保存（txt形式）';
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('保存エラー:', error);
+                        showNotification('❌ 保存に失敗しました: ' + error.message, 'error');
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = '💾 結果を保存（txt形式）';
+                    });
+            }
 
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = '💾 結果を保存（txt形式）';
-                })
-                .catch(function(error) {
-                    console.error('保存エラー:', error);
-                    alert('保存に失敗しました');
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = '💾 結果を保存（txt形式）';
-                });
-            });
+            // 保存ボタンのイベントリスナー（新しい関数を使用）
+            saveBtn.addEventListener('click', saveTranscriptionWithDialog);
 
             // モデル選択変更時のイベントハンドラ
             modelSelect.addEventListener('change', function() {
@@ -770,15 +1015,19 @@ async def root():
                         if (!data.exists) {
                             // モデルが未ダウンロード
                             console.log('Model NOT exists - showing dialog');
-                            var message = 'モデル「' + modelName + '」は未ダウンロードです。\\n' +
-                                         'サイズ: 約' + data.size_gb + 'GB\\n\\n' +
-                                         '初回使用時に自動でダウンロードされます（数分かかります）。\\n' +
-                                         '続行しますか？';
+                            var modelDisplayName = selectedModel === 'large-v3' ? 'Faster-Whisper Large-v3' : 'Faster-Whisper Medium';
+                            var message = `音声認識AIモデル「${modelDisplayName}」をダウンロードする必要があります。
+サイズ: 約${data.size_gb}GB
 
-                            if (!confirm(message)) {
-                                // キャンセルされた場合、mediumに戻す
-                                modelSelect.value = 'medium';
-                            }
+初回使用時に自動でダウンロードされます（数分かかります）。
+続行しますか？`;
+
+                            showCustomConfirm('音声認識AIモデルを管理します', message).then(function(result) {
+                                if (!result) {
+                                    // キャンセルされた場合、mediumに戻す
+                                    modelSelect.value = 'medium';
+                                }
+                            });
                         } else {
                             console.log('Model exists - no dialog shown');
                         }
@@ -882,28 +1131,48 @@ async def root():
 
             // モデルを削除
             function deleteModel(modelName) {
-                if (!confirm('モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。')) {
-                    return;
-                }
+                var modelDisplayName = modelName === 'large-v3' ? 'Faster-Whisper Large-v3' : 'Faster-Whisper Medium';
+                var message = `音声認識AIモデル「${modelDisplayName}」を削除しますか？
 
-                fetch('/models/' + modelName, {
-                    method: 'DELETE'
-                })
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    if (data.success) {
-                        alert(data.message);
-                        loadModels();  // 一覧を再読み込み
-                    } else {
-                        alert('エラー: ' + data.message);
+削除後は再度ダウンロードが必要です。`;
+
+                showCustomConfirm('音声認識AIモデルを管理します', message).then(function(result) {
+                    if (!result) {
+                        return;
                     }
-                })
-                .catch(function(error) {
-                    console.error('削除エラー:', error);
-                    alert('削除に失敗しました');
+
+                    fetch('/models/' + modelName, {
+                        method: 'DELETE'
+                    })
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            alert(data.message);
+                            loadModels();  // 一覧を再読み込み
+                        } else {
+                            alert('エラー: ' + data.message);
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('削除エラー:', error);
+                        alert('削除に失敗しました');
+                    });
                 });
             }
         </script>
+
+        <!-- カスタム確認ダイアログ -->
+        <div id="customDialogOverlay" class="custom-dialog-overlay">
+            <div class="custom-dialog">
+                <div class="custom-dialog-title" id="customDialogTitle">確認</div>
+                <div class="custom-dialog-message" id="customDialogMessage"></div>
+                <div class="custom-dialog-buttons">
+                    <button class="custom-dialog-btn custom-dialog-btn-cancel" id="customDialogCancel">キャンセル</button>
+                    <button class="custom-dialog-btn custom-dialog-btn-ok" id="customDialogOk">OK</button>
+                </div>
+            </div>
+        </div>
+
     </body>
     </html>
     """
@@ -1070,7 +1339,7 @@ async def transcribe_stream(
             model_info = check_model_exists(model)
             if not model_info["exists"]:
                 # モデルが未ダウンロード - ダウンロードに数分かかることを明示
-                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください（数分かかります）\nダウンロード後、自動的に文字起こしを開始します"
+                status_msg = f"音声認識AIモデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください\n\nダウンロード終了後、自動的に文字起こしを開始します"
                 yield f"data: {json.dumps({'progress': 5, 'status': status_msg})}\n\n"
             else:
                 yield f"data: {json.dumps({'progress': 5, 'status': '音声認識モデル起動中...'})}\n\n"
@@ -1200,6 +1469,36 @@ async def save_transcription():
         media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@app.get("/get-transcription-text")
+async def get_transcription_text():
+    """
+    文字起こし結果のテキストを取得（保存用）
+
+    Returns:
+        JSON: テキスト内容とファイル名
+    """
+    if not last_transcription["text"]:
+        return JSONResponse(
+            content={"error": "保存する文字起こし結果がありません"}, status_code=400
+        )
+
+    # タイムスタンプ
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"transcription_{timestamp}.txt"
+
+    # テキスト内容生成
+    text = last_transcription["text"]
+    char_count = len(text.replace("\n", "").replace(" ", ""))
+    processing_time = last_transcription["processing_time"]
+
+    content = f"{text}\n\n"
+    content += "=" * 50 + "\n"
+    content += f"文字数: {char_count}文字\n"
+    content += f"処理時間: {processing_time:.2f}秒\n"
+
+    return JSONResponse(content={"text": content, "filename": filename})
 
 
 if __name__ == "__main__":

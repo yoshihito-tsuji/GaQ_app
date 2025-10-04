@@ -4,11 +4,18 @@ faster-whisperを使用した音声認識
 """
 
 import logging
+import os
 import re
 import shutil
 import time
 from pathlib import Path
 from typing import Any, Optional
+
+# ===== Windows対応: シンボリックリンク無効化 =====
+# 配布版で管理者権限を要求しないための設定
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+# ================================================
 
 from faster_whisper import WhisperModel
 
@@ -138,13 +145,59 @@ class TranscriptionService:
         logger.info(f"モデル '{model_name}' をロード中...")
         start_time = time.time()
 
-        # faster-whisperが自動でダウンロード
-        self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        try:
+            # faster-whisperが自動でダウンロード
+            self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
 
-        self.current_model_name = model_name
-        elapsed = time.time() - start_time
+            self.current_model_name = model_name
+            elapsed = time.time() - start_time
 
-        logger.info(f"✅ モデルロード完了: {model_name} ({elapsed:.1f}秒)")
+            logger.info(f"✅ モデルロード完了: {model_name} ({elapsed:.1f}秒)")
+
+        except PermissionError as e:
+            error_str = str(e)
+            logger.error(f"❌ 権限エラー: {error_str}")
+
+            # WinError 1314対策: シンボリックリンクエラーの場合
+            if "1314" in error_str or "symlink" in error_str.lower():
+                logger.warning("WinError 1314を検出: キャッシュクリーンアップを試行")
+
+                # 部分的なダウンロードファイルを削除
+                cache_path = Path.home() / ".cache" / "huggingface" / "hub"
+                if cache_path.exists():
+                    for tmp_file in cache_path.glob("**/*.tmp"):
+                        try:
+                            tmp_file.unlink()
+                            logger.info(f"削除: {tmp_file}")
+                        except Exception:
+                            pass
+                    for lock_file in cache_path.glob("**/*.lock"):
+                        try:
+                            lock_file.unlink()
+                            logger.info(f"削除: {lock_file}")
+                        except Exception:
+                            pass
+
+                # 再試行
+                logger.info("モデルダウンロードを再試行...")
+                self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
+                self.current_model_name = model_name
+                elapsed = time.time() - start_time
+                logger.info(f"✅ モデルロード完了（再試行成功）: {model_name} ({elapsed:.1f}秒)")
+            else:
+                error_msg = (
+                    "モデルのダウンロードに失敗しました。\n\n"
+                    "以下を確認してください:\n"
+                    "1. インターネット接続\n"
+                    "2. ディスク容量（約3GB必要）\n"
+                    "3. セキュリティソフトの設定\n\n"
+                    f"キャッシュフォルダ: {Path.home() / '.cache' / 'huggingface'}"
+                )
+                raise PermissionError(error_msg) from e
+
+        except Exception as e:
+            logger.error(f"❌ モデルロードエラー: {e}", exc_info=True)
+            raise
 
     def transcribe(
         self,
