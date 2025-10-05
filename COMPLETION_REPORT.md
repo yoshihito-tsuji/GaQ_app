@@ -278,3 +278,210 @@
 
 ✅ **GaQ Offline Transcriber v1.1.0 リリース作業完了**
 ✅ **追加修正作業完了（改行処理、Chrome起動、プログレスバー）**
+
+---
+
+## 🔍 Windows版コードレビュー作業（2025-10-05）
+
+### 作業概要
+- **作業時間**: 21:40 - 22:10（約30分）
+- **担当**: Claude Code（実装レビュー補助）
+- **作業内容**: Windows版リリース構成の妥当性評価とコード品質チェック
+- **対象ディレクトリ**: `release/windows/src/`
+
+### 実施した内容確認項目
+
+#### 1. コード構成の把握 ✅
+- **ファイル構成確認**:
+  - [main_app.py](release/windows/src/main_app.py) - pywebviewエントリポイント（135行）
+  - [main.py](release/windows/src/main.py) - FastAPI本体（1220行）
+  - [transcribe.py](release/windows/src/transcribe.py) - faster-whisper処理（264行）
+  - [config.py](release/windows/src/config.py) - 設定定義（24行）
+  - [requirements.txt](release/windows/src/requirements.txt) - 依存関係（8パッケージ）
+  - [GaQ_Transcriber.spec](release/windows/GaQ_Transcriber.spec) - PyInstallerビルド設定
+
+- **起動シーケンス確認**:
+  1. `main_app.py::main()` → `multiprocessing.freeze_support()` (Windows対応)
+  2. FastAPIサーバー起動（別スレッド・daemon）
+  3. ヘルスチェック待機（`/health`エンドポイント、最大30秒）
+  4. pywebviewウィンドウ表示（`http://127.0.0.1:8000`）
+
+#### 2. 妥当性チェック結果 ⚠️
+
+##### 🔴 重大な問題（3件）
+
+**問題1**: PyInstaller実行時のパス解決問題
+- **場所**: [config.py:8-12](release/windows/src/config.py#L8-L12)
+- **詳細**: `BASE_DIR = Path(__file__).parent.parent` がPyInstaller環境で一時ディレクトリを参照する可能性
+- **影響**: `UPLOAD_DIR`（アップロードファイル保存先）が正しく作成されない
+- **推奨対策**: `sys.frozen`チェックによる環境判定と`sys.executable`使用
+
+**問題2**: 静的ファイル配信のパス問題
+- **場所**: [main.py:43-45](release/windows/src/main.py#L43-L45)
+- **詳細**: `static_dir = Path(__file__).parent / "static"` がPyInstaller環境で機能しない
+- **影響**: UIアイコン（🦜マーク）が表示されない
+- **推奨対策**: `sys._MEIPASS`を使用したPyInstaller対応
+
+**問題3**: スレッド例外の伝播不足
+- **場所**: [main_app.py:122-125](release/windows/src/main_app.py#L122-L125)
+- **詳細**: FastAPIサーバー起動失敗時、`daemon=True`により無言で終了
+- **影響**: エラー原因がユーザーに通知されない
+- **推奨対策**: エラーキューによる例外伝播の実装
+
+##### 🟠 中程度の問題（3件）
+
+**問題4**: モデルダウンロード時の初回起動UX
+- **詳細**: オフライン環境では初回モデルダウンロード（最大2.9GB）が失敗
+- **影響**: 「Offline Transcriber」という名称に反してオンライン必須
+- **推奨**: README/マニュアルへの明記、またはモデル事前同梱
+
+**問題5**: 依存ライブラリの明示不足
+- **場所**: [requirements.txt](release/windows/src/requirements.txt)
+- **詳細**: `ctranslate2`, `av` (PyAV) が明記されていない
+- **影響**: 環境によってはインストール失敗の可能性
+- **推奨**: 明示的に追加（`ctranslate2>=3.0.0`, `av>=10.0.0`）
+
+**問題6**: 一時ファイル削除タイミング
+- **場所**: [main.py:1133-1143](release/windows/src/main.py#L1133-L1143)
+- **詳細**: `BackgroundTasks`がストリーミング完了前にトリガーされる可能性
+- **推奨**: コメントで意図を明記
+
+##### 🟡 軽微な問題（4件）
+
+- ログレベルの不一致（`main_app.py`: warning、`main.py`: info）
+- `aiofiles`パッケージが未使用（requirements.txtに記載のみ）
+- CORS設定が開放的（`allow_origins=["*"]`）
+- デフォルトモデル削除防止がUI層のみの保護
+
+#### 3. 動作見込み評価 📊
+
+**総合評価**: 🟢 **高い（条件付き）**
+
+**成功する見立て**:
+- ✅ 開発環境（`python main_app.py`実行）では問題なく動作する
+- ✅ FastAPI + pywebviewアーキテクチャは実績あり
+- ✅ faster-whisperの使用方法は適切（VADフィルタ、進捗コールバック）
+
+**前提条件**:
+- ⚠️ PyInstallerビルド後の動作には「重大な問題1, 2」の修正が必須
+- ⚠️ 初回起動時はインターネット接続が必要（モデルダウンロード）
+- ⚠️ 推奨システム要件: Windows 10/11、8GB RAM以上、CPU負荷に注意
+
+**運用リスク**:
+- CPU負荷: `device="cpu", compute_type="int8"` により文字起こし中は高負荷
+- メモリ消費: Mediumモデル(1.5GB)でも長時間音声でメモリ不足の可能性
+- ダウンロード容量: Large-v3モデルは約2.9GB
+
+#### 4. 推奨テスト手順 🧪
+
+**開発環境での動作確認**:
+```bash
+cd release/windows
+python -m venv venv
+venv\Scripts\activate
+pip install -r src\requirements.txt
+cd src
+python main_app.py
+```
+
+**確認項目**:
+- [ ] pywebviewウィンドウが表示される
+- [ ] UI（アイコン含む）が正しく表示される
+- [ ] 音声ファイルアップロードと文字起こしが実行される
+- [ ] 進捗バーが正常に動作する
+- [ ] 結果保存機能が動作する
+
+**PyInstallerビルド確認**:
+```bash
+pip install pyinstaller
+cd release/windows
+pyinstaller GaQ_Transcriber.spec
+cd dist\GaQ_Transcriber
+.\GaQ_Transcriber.exe
+```
+
+**エッジケーステスト**:
+- [ ] ポート8000が既に使用中の場合の挙動
+- [ ] インターネット未接続での初回起動
+- [ ] 大容量ファイル（100MB以上）のアップロード
+- [ ] 長時間音声（1時間以上）の処理
+
+### 主な発見事項
+
+#### ✅ 優れている点
+1. **アーキテクチャの明確さ**: FastAPI + pywebviewの分離設計が適切
+2. **日本語対応**: 改行整形ロジック（句点・助詞での改行）が丁寧に実装
+3. **進捗フィードバック**: SSE（Server-Sent Events）による リアルタイム進捗表示
+4. **エラーハンドリング**: 主要なエラーケースに対応（ファイル形式、モデル名など）
+
+#### ⚠️ 改善が必要な点
+1. **PyInstaller対応の不完全性**: パス解決が開発環境依存
+2. **依存関係の曖昧さ**: 暗黙的な依存パッケージの存在
+3. **エラーログの不足**: ユーザー向けトラブルシューティング情報が不足
+4. **オフライン実行の制約**: 名称と実態のギャップ
+
+### 次のアクションプラン
+
+#### 優先度: 高 🔴
+1. **`config.py`のPyInstaller対応** - `BASE_DIR`の環境判定ロジック追加
+2. **`main.py`のPyInstaller対応** - `static_dir`の`sys._MEIPASS`対応
+3. **依存関係の明記** - `ctranslate2`, `av`を`requirements.txt`に追加
+4. **PyInstallerビルドテスト** - Windows環境で実行ファイル作成と動作確認
+
+#### 優先度: 中 🟠
+5. **エラーログ出力の実装** - ファイル永続化とユーザー向けエラー表示
+6. **README更新** - システム要件、初回起動時の注意事項を明記
+7. **スレッド例外伝播** - エラーキューによる堅牢なエラーハンドリング
+
+#### 優先度: 低 🟡
+8. **CORS設定の厳格化** - `allow_origins`をlocalhostのみに制限
+9. **不要パッケージ削除** - `aiofiles`の削除または活用
+10. **自動テスト追加** - pytestによるAPIエンドポイントテスト
+
+### 本作業での変更内容
+
+**コード変更**: なし（レビューのみ実施）
+
+**ドキュメント更新**: 本セクション追加
+
+**成果物**:
+- Windows版構成の包括的なレビューレポート
+- PyInstallerビルド前の課題リスト
+- 優先度付きアクションプラン
+
+### 技術的知見
+
+#### Windows固有の配慮
+- ✅ `multiprocessing.freeze_support()` の適切な実装 ([main_app.py:118-119](release/windows/src/main_app.py#L118-L119))
+- ✅ x64アーキテクチャ指定 ([GaQ_Transcriber.spec:69](release/windows/GaQ_Transcriber.spec#L69))
+- ⚠️ パスセパレータの統一確認が必要
+
+#### PyInstallerの注意点
+- `__file__`が一時ディレクトリを指す問題
+- `sys._MEIPASS`による実行時データパスの取得
+- hiddenimportsの適切な設定（uvicorn, faster-whisper関連）
+
+### 残課題・未確認事項
+
+#### 要確認
+- [ ] Windows実機での動作テスト未実施
+- [ ] PyInstallerビルドの成功確認未実施
+- [ ] モデルファイルの事前同梱方針（未決定）
+- [ ] コード署名の必要性（Authenticode）
+- [ ] インストーラー作成の方針（Inno Setupなど）
+
+#### 追加検討事項
+- エラーログの出力先（`%APPDATA%\GaQ\logs\`など）
+- 設定ファイル対応（ポート番号、モデル格納先のカスタマイズ）
+- バッチ処理機能（複数ファイルの一括文字起こし）
+- エクスポート形式の拡充（SRT字幕、JSON形式など）
+
+---
+
+**レビュー実施者**: Claude Code (Sonnet 4.5)
+**実施日時**: 2025-10-05 21:40 - 22:10
+**レビュー対象**: Windows版 release/windows/src/ 全ファイル
+
+✅ **コード構成の理解完了**
+⚠️ **PyInstallerビルド前の課題を特定**
+📋 **アクションプランを策定**
