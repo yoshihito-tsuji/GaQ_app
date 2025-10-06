@@ -98,7 +98,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     # pywebviewのバージョンによってはiconパラメータが使えないため、
     # まずウィンドウを作成してから、後でアイコンを設定する
     window = webview.create_window(
-        title="GaQ Offline Transcriber",
+        title="GaQ Offline Transcriber v1.1.0",
         url=url,
         width=800,
         height=900,
@@ -109,8 +109,8 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     )
 
     # Webviewを起動（メインスレッド）
-    # デバッグモードを有効にして問題を診断
-    webview.start(debug=True)
+    # 本番ビルド: デバッグモードを無効化（開発者ツールを非表示）
+    webview.start(debug=False)
 
 
 class Api:

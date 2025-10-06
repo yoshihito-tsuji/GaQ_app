@@ -2,10 +2,17 @@
 設定ファイル
 """
 
+import sys
 from pathlib import Path
 
 # ベースディレクトリ
-BASE_DIR = Path(__file__).parent.parent
+# PyInstallerでバンドルされた実行ファイルの場合、sys.frozenが設定される
+if getattr(sys, 'frozen', False):
+    # 実行ファイル（.exe）のディレクトリを起点とする
+    BASE_DIR = Path(sys.executable).parent
+else:
+    # 開発環境（スクリプト実行時）は従来通り
+    BASE_DIR = Path(__file__).parent.parent
 
 # アップロードディレクトリ
 UPLOAD_DIR = BASE_DIR / "uploads"

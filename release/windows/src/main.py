@@ -52,7 +52,14 @@ app.add_middleware(
 )
 
 # 静的ファイルの配信
-static_dir = Path(__file__).parent / "static"
+# PyInstallerでバンドルされた場合、sys._MEIPASSに一時展開されたファイルパスが設定される
+if getattr(sys, 'frozen', False):
+    # PyInstaller環境: 一時展開ディレクトリ（sys._MEIPASS）から参照
+    static_dir = Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / "static"
+else:
+    # 開発環境: スクリプトのディレクトリから参照
+    static_dir = Path(__file__).parent / "static"
+
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 

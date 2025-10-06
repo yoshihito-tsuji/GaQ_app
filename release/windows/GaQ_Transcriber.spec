@@ -6,6 +6,7 @@ GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
 
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 
 # ソースコードディレクトリ
 src_dir = Path('src')
@@ -15,6 +16,10 @@ datas = [
     (str(src_dir / 'icon.png'), '.'),  # アイコンファイル
     (str(src_dir / 'static' / 'icon.png'), 'static'),  # 静的ファイル用アイコン
 ]
+
+# faster_whisperのアセットファイルを収集
+faster_whisper_datas = collect_data_files('faster_whisper', includes=['assets/*'])
+datas += faster_whisper_datas
 
 # 追加の隠しインポート（必要に応じて追加）
 hiddenimports = [
