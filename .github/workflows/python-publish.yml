@@ -1,24 +1,49 @@
-    - name: Install deps
-      shell: pwsh
-      run: |
-        python -m pip install --upgrade pip
-        if (Test-Path requirements.txt) { pip install -r requirements.txt }
-        pip install pyinstaller pillow
+name: Build (Windows) — PyInstaller
 
-    - name: Ensure ICO (convert if only PNG exists)
-      shell: pwsh
-      run: |
-        if (Test-Path .\release\mac\src\icon.ico) { exit 0 }
-        if (Test-Path .\release\mac\src\icon.png) {
-          python -c "from PIL import Image; Image.open(r'release/mac/src/icon.png').save(r'release/mac/src/icon.ico')"
-        }
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
 
-    - name: Build with PyInstaller (no .spec)
-      shell: pwsh
-      run: |
-        $icon = Test-Path .\release\mac\src\icon.ico
-        if ($icon) {
-          pyinstaller .\release\mac\src\main_app.py --onefile --noconsole --icon .\release\mac\src\icon.ico
-        } else {
-          pyinstaller .\release\mac\src\main_app.py --onefile --noconsole
-        }
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+          pip install pyinstaller pillow
+
+      - name: Ensure ICO (convert if only PNG exists)
+        shell: pwsh
+        run: |
+          if (Test-Path .\release\mac\src\icon.ico) { exit 0 }
+          if (Test-Path .\release\mac\src\icon.png) {
+            python -c "from PIL import Image; Image.open(r'release/mac/src/icon.png').save(r'release/mac/src/icon.ico')"
+          }
+
+      - name: Build with PyInstaller (no .spec)
+        shell: pwsh
+        run: |
+          $icon = Test-Path .\release\mac\src\icon.ico
+          if ($icon) {
+            pyinstaller .\release\mac\src\main_app.py --onefile --noconsole --icon .\release\mac\src\icon.ico
+          } else {
+            pyinstaller .\release\mac\src\main_app.py --onefile --noconsole
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GaQ_app_win_build
+          path: dist/
