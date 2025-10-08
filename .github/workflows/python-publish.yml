@@ -11,14 +11,14 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
+      uses: actions/checkout@v4
 
-    - name: Set up Python
+      name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    - name: Install pip & requirements (if exists)
+      name: Install pip & requirements (if exists)
       shell: pwsh
       run: |
         python -m pip install --upgrade pip
@@ -26,10 +26,10 @@ jobs:
           pip install -r requirements.txt
         }
 
-    - name: Install PyInstaller
+      name: Install PyInstaller
       run: pip install pyinstaller
 
-    - name: Build with PyInstaller
+      name: Build with PyInstaller
       shell: pwsh
       run: |
         if (Get-ChildItem -Recurse -Filter *.spec | Select-Object -First 1) {
@@ -44,7 +44,7 @@ jobs:
           exit 1
         }
 
-    - name: Upload artifact (dist/)
+      name: Upload artifact (dist/)
       uses: actions/upload-artifact@v4
       with:
         name: GaQ_app_win_build
