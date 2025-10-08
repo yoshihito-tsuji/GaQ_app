@@ -1,48 +1,27 @@
-name: Build (Windows) — PyInstaller
+    - name: Install deps
+      shell: pwsh
+      run: |
+        python -m pip install --upgrade pip
+        if (Test-Path requirements.txt) { pip install -r requirements.txt }
+        pip install pyinstaller pillow
 
-on:
-  workflow_dispatch:
-  push:
-    tags:
-      - 'v*.*.*'
+    - name: Ensure ICO (convert if only PNG exists)
+      shell: pwsh
+      run: |
+        if (Test-Path .\release\mac\src\icon.ico) { exit 0 }
+        if (Test-Path .\release\mac\src\icon.png) {
+          python - << 'PY'
+from PIL import Image
+Image.open(r"release/mac/src/icon.png").save(r"release/mac/src/icon.ico")
+PY
+        }
 
-jobs:
-  build-win:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install pip & requirements (if exists)
-        shell: pwsh
-        run: |
-          python -m pip install --upgrade pip
-          if (Test-Path requirements.txt) { pip install -r requirements.txt }
-
-      - name: Install PyInstaller
-        run: pip install pyinstaller
-
-      - name: Build with PyInstaller
-        shell: pwsh
-        run: |
-          $spec = Get-ChildItem -Recurse -Filter *.spec | Select-Object -First 1
-          if ($spec) {
-            pyinstaller "$($spec.FullName)"
-          } elseif (Test-Path .\main.py) {
-            pyinstaller .\main.py --onefile --noconsole
-          } elseif (Test-Path .\src\main.py) {
-            pyinstaller .\src\main.py --onefile --noconsole
-          } else {
-            Write-Error "入口が見つかりません（main.py か *.spec を用意）。"
-            exit 1
-          }
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: GaQ_app_win_build
-          path: dist/
+    - name: Build with PyInstaller (no .spec)
+      shell: pwsh
+      run: |
+        $icon = Test-Path .\release\mac\src\icon.ico
+        if ($icon) {
+          pyinstaller .\release\mac\src\main_app.py --onefile --noconsole --icon .\release\mac\src\icon.ico
+        } else {
+          pyinstaller .\release\mac\src\main_app.py --onefile --noconsole
+        }
