@@ -1,10 +1,13 @@
-name: hello
+name: Build (Windows) — PyInstaller
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
 
 jobs:
-  hello:
+  build-win:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,5 +17,32 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Say hello
-        run: python -c "print('ok')"
+      - name: Install pip & requirements (if exists)
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          $spec = Get-ChildItem -Recurse -Filter *.spec | Select-Object -First 1
+          if ($spec) {
+            pyinstaller "$($spec.FullName)"
+          } elseif (Test-Path .\main.py) {
+            pyinstaller .\main.py --onefile --noconsole
+          } elseif (Test-Path .\src\main.py) {
+            pyinstaller .\src\main.py --onefile --noconsole
+          } else {
+            Write-Error "入口が見つかりません（main.py か *.spec を用意）。"
+            exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GaQ_app_win_build
+          path: dist/
