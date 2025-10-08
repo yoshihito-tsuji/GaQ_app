@@ -10,10 +10,7 @@
       run: |
         if (Test-Path .\release\mac\src\icon.ico) { exit 0 }
         if (Test-Path .\release\mac\src\icon.png) {
-          python - << 'PY'
-from PIL import Image
-Image.open(r"release/mac/src/icon.png").save(r"release/mac/src/icon.ico")
-PY
+          python -c "from PIL import Image; Image.open(r'release/mac/src/icon.png').save(r'release/mac/src/icon.ico')"
         }
 
     - name: Build with PyInstaller (no .spec)
