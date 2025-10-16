@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from config import ALLOWED_EXTENSIONS, AVAILABLE_MODELS, DEFAULT_MODEL, HOST, PORT, UPLOAD_DIR
+from config import ALLOWED_EXTENSIONS, APP_VERSION, AVAILABLE_MODELS, DEFAULT_MODEL, HOST, PORT, UPLOAD_DIR
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
@@ -67,7 +67,7 @@ async def root():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaQ Offline Transcriber - オフラインAI文字おこし</title>
+    <title>GaQ Offline Transcriber {version} - オフラインAI文字おこし</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦜</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -410,7 +410,7 @@ async def root():
         <div class="container">
             <h1>
                 <img src="/static/icon.png" alt="GaQ Logo" class="logo-icon">
-                GaQ Offline Transcriber
+                GaQ Offline Transcriber {version}
             </h1>
             <p class="subtitle">オフラインAI文字おこしアプリケーション</p>
 
@@ -906,14 +906,14 @@ async def root():
         </script>
     </body>
     </html>
-    """
+    """.format(version=APP_VERSION)
     return HTMLResponse(content=html_content)
 
 
 @app.get("/health")
 async def health_check():
     """ヘルスチェック"""
-    return {"status": "ok", "service": "GaQ Transcription API"}
+    return {"status": "ok", "service": "GaQ Transcription API", "version": APP_VERSION}
 
 
 @app.get("/models")

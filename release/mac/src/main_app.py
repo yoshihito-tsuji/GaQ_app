@@ -15,6 +15,8 @@ import requests
 import uvicorn
 import webview
 
+from config import APP_VERSION
+
 # ログ設定
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -95,7 +97,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     # Webviewウィンドウを作成
     logger.info(f"🖥️ Webviewウィンドウ起動: {url}")
     window = webview.create_window(
-        title="GaQ Offline Transcriber",
+        title=f"GaQ Offline Transcriber {APP_VERSION}",
         url=url,
         width=800,
         height=900,
@@ -112,7 +114,7 @@ def main():
     """
     アプリケーションのメインエントリーポイント
     """
-    logger.info("=== GaQ Offline Transcriber 起動 ===")
+    logger.info(f"=== GaQ Offline Transcriber {APP_VERSION} 起動 ===")
 
     # macOS の multiprocessing 対応
     if sys.platform == "darwin":
@@ -127,7 +129,7 @@ def main():
     # Webviewウィンドウを作成（メインスレッド）
     create_webview_window("127.0.0.1", 8000)
 
-    logger.info("=== GaQ Offline Transcriber 終了 ===")
+    logger.info(f"=== GaQ Offline Transcriber {APP_VERSION} 終了 ===")
 
 
 if __name__ == "__main__":

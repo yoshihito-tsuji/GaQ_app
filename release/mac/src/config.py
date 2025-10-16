@@ -18,6 +18,9 @@ ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4"}
 AVAILABLE_MODELS = ["medium", "large-v3"]
 DEFAULT_MODEL = "medium"
 
+# アプリケーションバージョン
+APP_VERSION = "v1.1.1"
+
 # サーバー設定
 HOST = "127.0.0.1"
 PORT = 8000
