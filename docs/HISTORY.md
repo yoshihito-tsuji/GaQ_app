@@ -1,5 +1,114 @@
 # GaQ Offline Transcriber - 開発履歴
 
+## 2025-10-16: Mac版 v1.1.1 リリース（パッチリリース）
+
+### リリース概要
+- **バージョン**: Mac版 v1.1.1 / Windows版 v1.1.0（変更なし）
+- **リリース種別**: パッチリリース（バグフィックス）
+- **作業時間**: 2025-10-16
+- **ステータス**: ✅ 完了
+
+### v1.1.1での変更内容
+
+#### 1. Mac版起動エラーの修正
+**問題**:
+- Mac版アプリが起動しない（Dockでアイコンがバウンドするのみ）
+- Python 3.13.5環境でのFastAPI type annotation互換性問題
+
+**修正内容**:
+- [release/mac/src/main.py](../release/mac/src/main.py): 型ヒント構文を修正
+  - `Annotated[UploadFile, File()]` → `UploadFile = File(...)`
+  - `/transcribe`エンドポイント (lines 969-970)
+  - `/transcribe-stream`エンドポイント (lines 1024-1025)
+
+#### 2. Python 3.12固定ビルド対応
+**背景**:
+- Python 3.13でのFastAPI互換性問題を恒久的に回避
+
+**実施内容**:
+- Python 3.12.12をHomebrew経由でインストール
+- `.python-version`ファイル作成（Mac/Windows）
+- 自動ビルドスクリプト作成:
+  - [release/mac/build.sh](../release/mac/build.sh) - Python 3.12チェック + DMG自動生成
+  - [release/windows/build.bat](../release/windows/build.bat) - Python 3.12チェック
+
+#### 3. ビルドスクリプトの改行コード修正
+**問題**:
+- build.shがCRLF改行で`/bin/bash^M`エラー
+
+**修正**:
+- sedコマンドでCRLF → LF変換
+- .gitattributes作成による改行コード管理
+  - `*.sh` → LF固定
+  - `*.bat` → CRLF固定
+  - `.python-version` → LF固定
+
+#### 4. DMGセットアップ簡略化
+**追加機能**:
+- DMG内配置ファイル:
+  - `インストール方法.txt` - 詳細なインストール手順
+  - `GaQ セットアップ.command` - 自動セットアップスクリプト
+- build.shにDMG自動生成機能を追加
+- Applicationsフォルダへのシンボリックリンク作成
+
+### 配布パッケージ
+
+**Mac版 v1.1.1**:
+- ファイル名: `GaQ_Transcriber_v1.1.1_mac.dmg`
+- サイズ: 約187MB
+- 内容:
+  - GaQ Offline Transcriber.app (Python 3.12.12同梱)
+  - インストール方法.txt
+  - GaQ セットアップ.command
+
+**Windows版 v1.1.0**:
+- 変更なし（既存パッケージをそのまま使用）
+
+### 技術詳細
+
+**ビルド環境**:
+- Python: 3.12.12
+- PyInstaller: 6.16.0
+- faster-whisper: 1.2.0
+- FastAPI: 0.104.1
+- macOS: Darwin 24.6.0
+
+**ファイルサイズ比較**:
+- Python 3.13.5ビルド: 186MB
+- Python 3.12.12ビルド: 187MB
+- DMG (圧縮後): 約187MB
+
+### ドキュメント
+
+詳細な作業ログ:
+- [development/20251016_mac_launch_error.md](development/20251016_mac_launch_error.md)
+- [development/20251016_python_version_lock_SUMMARY.md](development/20251016_python_version_lock_SUMMARY.md)
+- [development/20251016_build_script_fix.md](development/20251016_build_script_fix.md)
+- [development/20251016_windows_build_script_check.md](development/20251016_windows_build_script_check.md)
+- [development/20251016_mac_v1.1.1_release.md](development/20251016_mac_v1.1.1_release.md)
+
+### 主な変更ファイル
+
+**修正**:
+- release/mac/src/main.py
+- release/mac/build.sh
+- release/mac/GaQ_Transcriber.spec
+
+**新規**:
+- release/mac/.python-version
+- release/windows/.python-version
+- release/windows/build.bat
+- release/mac/dmg_assets/インストール方法.txt
+- release/mac/dmg_assets/GaQ セットアップ.command
+- .gitattributes
+
+**更新**:
+- README.md
+- docs/guides/BUILD_GUIDE.md
+- docs/HISTORY.md (このファイル)
+
+---
+
 ## 2025-10-03: 配布方針の確定と過去の問題
 
 ### 配布バージョンの決定

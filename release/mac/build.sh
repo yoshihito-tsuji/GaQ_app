@@ -100,3 +100,67 @@ fi
 
 echo ""
 echo "=== ビルド完了 ==="
+echo ""
+
+# DMG作成
+echo -e "${YELLOW}5. DMGパッケージを作成しています...${NC}"
+
+APP_NAME="GaQ Offline Transcriber"
+DMG_NAME="GaQ_Transcriber_v1.1.1_mac.dmg"
+DMG_TEMP_DIR="dmg_temp"
+DMG_ASSETS_DIR="dmg_assets"
+
+# 一時ディレクトリを作成
+rm -rf "$DMG_TEMP_DIR"
+mkdir -p "$DMG_TEMP_DIR"
+
+# アプリをコピー
+echo "アプリをコピーしています..."
+cp -R "dist/$APP_NAME.app" "$DMG_TEMP_DIR/"
+
+# DMG用ファイルをコピー
+if [ -d "$DMG_ASSETS_DIR" ]; then
+    echo "インストールガイドとセットアップスクリプトをコピーしています..."
+    cp "$DMG_ASSETS_DIR/インストール方法.txt" "$DMG_TEMP_DIR/"
+    cp "$DMG_ASSETS_DIR/GaQ セットアップ.command" "$DMG_TEMP_DIR/"
+    chmod +x "$DMG_TEMP_DIR/GaQ セットアップ.command"
+fi
+
+# Applications フォルダへのシンボリックリンクを作成
+echo "Applicationsフォルダへのリンクを作成しています..."
+ln -s /Applications "$DMG_TEMP_DIR/Applications"
+
+# 既存のDMGを削除
+if [ -f "dist/$DMG_NAME" ]; then
+    rm "dist/$DMG_NAME"
+fi
+
+# DMGを作成
+echo "DMGを作成しています..."
+hdiutil create \
+    -volname "$APP_NAME v1.1.1" \
+    -srcfolder "$DMG_TEMP_DIR" \
+    -ov \
+    -format UDZO \
+    "dist/$DMG_NAME"
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✓ DMGパッケージを作成しました！${NC}"
+    echo ""
+    echo "成果物:"
+    echo "  dist/$DMG_NAME"
+    ls -lh "dist/$DMG_NAME" 2>/dev/null || echo "  (サイズ情報の取得に失敗)"
+
+    # DMGサイズを表示
+    DMG_SIZE=$(du -h "dist/$DMG_NAME" | awk '{print $1}')
+    echo "  DMGサイズ: $DMG_SIZE"
+else
+    echo -e "${YELLOW}警告: DMGの作成に失敗しました${NC}"
+    echo "手動でDMGを作成してください"
+fi
+
+# 一時ディレクトリを削除
+rm -rf "$DMG_TEMP_DIR"
+
+echo ""
+echo "=== すべて完了 ==="

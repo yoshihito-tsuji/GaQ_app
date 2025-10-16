@@ -1,10 +1,12 @@
-# GaQ Offline Transcriber v1.1.0
+# GaQ Offline Transcriber
 
 オフライン動作するAI文字起こしアプリケーション
 
 ## 基本情報
 
-- **バージョン**: v1.1.0
+- **バージョン**:
+  - Mac版: v1.1.1
+  - Windows版: v1.1.0
 - **開発元**: [公立はこだて未来大学 辻研究室](https://tsuji-lab.net)
 - **対応プラットフォーム**: macOS、Windows
 - **文字起こしエンジン**: faster-whisper
@@ -36,9 +38,10 @@
 ## 配布パッケージ
 
 ### macOS版
-- **完全パッケージ版**: `GaQ_Transcriber_v1.1.0_Final.dmg` (約164MB)
-  - Python環境同梱
+- **完全パッケージ版**: `GaQ_Transcriber_v1.1.1_mac.dmg` (約187MB)
+  - Python 3.12.12環境同梱
   - ドラッグ&ドロップですぐに使用可能
+  - v1.1.1: 起動不具合修正 + Python 3.12固定ビルド
 
 ### Windows版
 - **ポータブルZIP版**: `GaQ_Transcriber_Windows_v1.1.0_Portable.zip` (138MB)
@@ -188,6 +191,6 @@ pyinstaller GaQ_Transcriber.spec
 
 ---
 
-**最終更新**: 2025-10-09
-**バージョン**: v1.1.0
+**最終更新**: 2025-10-16
+**バージョン**: Mac v1.1.1 / Windows v1.1.0
 **ステータス**: リリース済み
