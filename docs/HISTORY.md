@@ -201,5 +201,97 @@ docs/
 
 ---
 
-**最終更新**: 2025-10-09 21:40
+## 2025-10-16: Mac版起動エラー修正とPython 3.12固定ビルド対応
+
+### 作業概要
+- **作業時間**: 2025-10-16 20:01 - 20:11（約10分）
+- **担当**: Claude Code
+- **ステータス**: ✅ 完了
+
+### 発生した問題
+
+#### 問題1: Mac版アプリが起動しない
+- **症状**: アプリアイコンがDockでバウンドするが起動しない
+- **原因**: Python 3.13.5 + FastAPI 0.104.1 + Pydantic 2.12.2環境で`Annotated[UploadFile, File()]`型ヒント構文の互換性問題
+- **エラー**: `AssertionError: Param: file can only be a request body, using Body()`
+
+#### 問題2: Python 3.13との互換性問題
+- FastAPI/Pydanticの型アノテーション処理が変更され、従来構文が必要
+- Python 3.12.xでは問題なし
+
+### 実施した修正
+
+#### 1. FastAPI type annotation修正
+[release/mac/src/main.py](../release/mac/src/main.py):
+- Line 12: `Annotated`インポート削除
+- Lines 969-970: `/transcribe`エンドポイント修正
+  ```python
+  # 修正前: file: Annotated[UploadFile, File()]
+  # 修正後: file: UploadFile = File(...)
+  ```
+- Lines 1024-1025: `/transcribe-stream`エンドポイント修正
+
+#### 2. Python 3.12固定ビルド対応
+
+**Python 3.12.12のインストール**:
+```bash
+brew install python@3.12
+# インストール確認: Python 3.12.12
+```
+
+**作成したファイル**:
+- [release/mac/.python-version](../release/mac/.python-version) - Python 3.12.12指定
+- [release/mac/build.sh](../release/mac/build.sh) - Python 3.12チェック機能付きビルドスクリプト
+- [release/windows/.python-version](../release/windows/.python-version) - Python 3.12.12指定
+- [release/windows/build.bat](../release/windows/build.bat) - Python 3.12チェック機能付きビルドスクリプト
+
+**ドキュメント更新**:
+- [docs/guides/BUILD_GUIDE.md](guides/BUILD_GUIDE.md) - Python 3.12要件を明記
+
+#### 3. ビルド検証
+
+**Python 3.12.12でビルド**:
+```bash
+/opt/homebrew/bin/python3.12 -m venv venv
+source venv/bin/activate
+python --version  # Python 3.12.12
+pyinstaller --clean -y GaQ_Transcriber.spec
+```
+
+**成果物**:
+- `dist/GaQ Offline Transcriber.app` (187MB)
+- ✅ 起動確認成功
+
+### 技術詳細
+
+**Python 3.12を選択した理由**:
+1. Python 3.13ではFastAPIの型アノテーション互換性問題が発生
+2. Python 3.12.7以降の3.12.xが安定版として推奨
+3. HomebrewではPython 3.12.12が提供される
+
+**ビルドスクリプトの機能**:
+- Python 3.12のバージョンチェック
+- 仮想環境の自動作成/再作成
+- 依存パッケージの自動インストール
+- PyInstallerでのビルド自動化
+
+**サイズ比較**:
+- Python 3.13.5ビルド: 186MB
+- Python 3.12.12ビルド: 187MB
+- **差異**: +1MB（ほぼ同等）
+
+### ドキュメント
+
+詳細な作業ログ:
+- [development/20251016_mac_launch_error.md](development/20251016_mac_launch_error.md) - Mac起動エラー修正の詳細
+- [development/20251016_python_version_lock_SUMMARY.md](development/20251016_python_version_lock_SUMMARY.md) - Python 3.12固定対応の完了報告
+
+### 次のステップ
+- [ ] Windows環境でPython 3.12.12のビルドテスト
+- [ ] build.shの改行コード修正（LF固定）
+- [ ] mainブランチへのマージ（検証完了後）
+
+---
+
+**最終更新**: 2025-10-16 20:11
 **ブランチ**: dev
