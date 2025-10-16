@@ -9,7 +9,7 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Optional
 
 import uvicorn
 from config import ALLOWED_EXTENSIONS, AVAILABLE_MODELS, DEFAULT_MODEL, HOST, PORT, UPLOAD_DIR
@@ -966,8 +966,8 @@ async def check_model(model_name: str):
 @app.post("/transcribe")
 async def transcribe_audio(
     background_tasks: BackgroundTasks,
-    file: Annotated[UploadFile, File()],
-    model: Annotated[str, Form()] = DEFAULT_MODEL,
+    file: UploadFile = File(...),
+    model: str = Form(DEFAULT_MODEL),
 ):
     """
     音声ファイルを文字起こし
@@ -1021,8 +1021,8 @@ async def transcribe_audio(
 @app.post("/transcribe-stream")
 async def transcribe_stream(
     background_tasks: BackgroundTasks,
-    file: Annotated[UploadFile, File()],
-    model: Annotated[str, Form()] = DEFAULT_MODEL,
+    file: UploadFile = File(...),
+    model: str = Form(DEFAULT_MODEL),
 ):
     """
     音声ファイルを文字起こし（進捗をリアルタイムで送信）
