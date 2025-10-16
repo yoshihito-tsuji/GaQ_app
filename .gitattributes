@@ -8,6 +8,7 @@
 # Shell scripts should always use LF (Unix-style line endings)
 # This prevents "bad interpreter: /bin/bash^M" errors on macOS/Linux
 *.sh text eol=lf
+*.command text eol=lf
 
 # Windows batch files should use CRLF (Windows-style line endings)
 *.bat text eol=crlf
