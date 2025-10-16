@@ -28,6 +28,10 @@
 *.ini text eol=lf
 *.conf text eol=lf
 
+# Python version files (cross-platform compatibility)
+# pyenv/asdf tools handle both LF and CRLF, but LF is preferred for consistency
+.python-version text eol=lf
+
 # ====================
 # Binary Files
 # ====================
