@@ -11,7 +11,15 @@
       "Bash(hdiutil detach:*)",
       "Bash(curl:*)",
       "Bash(osascript:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Read(//private/tmp/**)",
+      "Bash(python3:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(cat:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

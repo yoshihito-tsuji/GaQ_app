@@ -490,42 +490,56 @@ async def root():
         <script>
             console.log('GaQ JavaScript starting...');
 
-            var uploadArea = document.getElementById('uploadArea');
-            var fileInput = document.getElementById('fileInput');
-            var fileName = document.getElementById('fileName');
-            var transcribeBtn = document.getElementById('transcribeBtn');
-            var progress = document.getElementById('progress');
-            var resultDiv = document.getElementById('result');
-            var resultText = document.getElementById('resultText');
-            var stats = document.getElementById('stats');
-            var modelSelect = document.getElementById('modelSelect');
-                        // トーストメッセージ表示関数
-            function showToast(message, duration = 3000) {
-                var toast = document.getElementById('toast');
-                toast.textContent = message;
-                toast.classList.add('show');
-                setTimeout(function() {
-                    toast.classList.remove('show');
-                }, duration);
-            }
+            // pywebview API の初期化タイミングを調整
+            // pywebview環境では 'pywebviewready' イベントを待ち、ブラウザ環境では DOMContentLoaded で初期化
+            function initializeApp(trigger) {
+                if (window.__appInitialized) {
+                    console.log('⏭ initializeApp() は既に実行済みです (trigger:', window.__appInitialized_source, ')');
+                    return;
+                }
+                window.__appInitialized = true;
+                window.__appInitialized_source = trigger || 'unknown';
+                console.log('🚀 initializeApp() 開始 - trigger:', window.__appInitialized_source);
+                console.log('pywebview API available:', !!window.pywebview);
 
-            var saveBtn = document.getElementById('saveBtn');
-            var modelManageBtn = document.getElementById('modelManageBtn');
-            var modelModal = document.getElementById('modelModal');
-            var modalClose = document.getElementById('modalClose');
-            var modelList = document.getElementById('modelList');
+                var uploadArea = document.getElementById('uploadArea');
+                var fileInput = document.getElementById('fileInput');
+                var fileNameLabel = document.getElementById('fileName');
+                var transcribeBtn = document.getElementById('transcribeBtn');
+                var progress = document.getElementById('progress');
+                var resultDiv = document.getElementById('result');
+                var resultText = document.getElementById('resultText');
+                var stats = document.getElementById('stats');
+                var modelSelect = document.getElementById('modelSelect');
+                var saveBtn = document.getElementById('saveBtn');
+                var modelManageBtn = document.getElementById('modelManageBtn');
+                var modelModal = document.getElementById('modelModal');
+                var modalClose = document.getElementById('modalClose');
+                var modelList = document.getElementById('modelList');
 
-            // 要素の存在確認（デバッグ用）
-            console.log('uploadArea:', uploadArea);
-            console.log('fileInput:', fileInput);
-            console.log('transcribeBtn:', transcribeBtn);
+                // 要素の存在確認（デバッグ用）
+                console.log('uploadArea:', uploadArea);
+                console.log('fileInput:', fileInput);
+                console.log('transcribeBtn:', transcribeBtn);
 
-            if (!uploadArea || !fileInput || !transcribeBtn) {
-                console.error('Required elements not found!');
-                alert('エラー: ページの読み込みに失敗しました。ページを再読み込みしてください。');
-            }
+                if (!uploadArea || !fileInput || !transcribeBtn) {
+                    console.error('Required elements not found!');
+                    alert('エラー: ページの読み込みに失敗しました。ページを再読み込みしてください。');
+                    return;
+                }
 
-            var selectedFile = null;
+                var selectedFile = null;
+
+                // トーストメッセージ表示関数
+                function showToast(message, duration) {
+                    duration = duration || 3000;
+                    var toast = document.getElementById('toast');
+                    toast.textContent = message;
+                    toast.classList.add('show');
+                    setTimeout(function() {
+                        toast.classList.remove('show');
+                    }, duration);
+                }
 
             // デフォルト動作を完全に防止する関数
             function preventDefaults(e) {
@@ -595,12 +609,27 @@ async def root():
             });
 
             // ドロップ時の処理
+            // 【仕様】pywebview環境では e.dataTransfer.files からファイルパスを取得できないため、
+            // ドラッグ&ドロップは非対応とし、クリック選択を案内する方針とする。
+            // ブラウザ環境では従来通りドロップ可能。
             uploadArea.addEventListener('drop', function(e) {
                 preventDefaults(e);
                 uploadArea.classList.remove('dragover');
+
+                // pywebview環境かチェック
+                if (window.pywebview && window.pywebview.api) {
+                    // pywebview環境ではドロップ非対応のため案内
+                    showToast('⚠️ ドラッグ&ドロップは未対応です。クリックしてファイルを選択してください', 4000);
+                    console.warn('⚠️ pywebview環境ではドラッグ&ドロップは非対応です');
+                    return;
+                }
+
+                // ブラウザ環境では従来通りファイル処理
                 var files = e.dataTransfer.files;
                 if (files.length > 0) {
                     handleFile(files[0]);
+                } else {
+                    showToast('✗ ファイルが選択されていません', 3000);
                 }
             });
 
@@ -629,7 +658,7 @@ async def root():
                 }
 
                 selectedFile = file;
-                fileName.textContent = '✅ ' + file.name;
+                fileNameLabel.textContent = '✅ ' + file.name;
                 transcribeBtn.disabled = false;
                 resultDiv.style.display = 'none';
 
@@ -637,8 +666,8 @@ async def root():
             }
 
             // pywebview経由でファイルをアップロード
-            async function uploadFileViaPywebview(filePath, fileName) {
-                console.log('📤 uploadFileViaPywebview() 開始:', fileName);
+            async function uploadFileViaPywebview(filePath, displayName) {
+                console.log('📤 uploadFileViaPywebview() 開始:', displayName);
 
                 try {
                     // Bridge APIを使ってファイルをアップロード
@@ -649,15 +678,15 @@ async def root():
                         console.log('✅ ファイルアップロード成功 - file_id:', uploadResult.file_id);
 
                         // UIを更新
-                        fileName.textContent = '✅ ' + fileName;
+                        fileNameLabel.textContent = '✅ ' + displayName;
                         transcribeBtn.disabled = false;
                         resultDiv.style.display = 'none';
 
                         // selectedFileIDを保存（文字起こし時に使用）
                         window.uploadedFileId = uploadResult.file_id;
-                        window.uploadedFileName = fileName;
+                        window.uploadedFileName = displayName;
 
-                        showToast('✓ ファイルを選択しました: ' + fileName);
+                        showToast('✓ ファイルを選択しました: ' + displayName);
                     } else {
                         console.error('❌ アップロード失敗:', uploadResult.message);
                         showToast('✗ ' + uploadResult.message);
@@ -893,8 +922,16 @@ async def root():
                 });
             }
 
-            function copyResult() {
-                navigator.clipboard.writeText(resultText.value).then(function() {
+            // copyResult関数をグローバルスコープに公開（onclick属性から呼び出せるようにする）
+            window.copyResult = function() {
+                var resultTextElement = document.getElementById('resultText');
+                if (!resultTextElement) {
+                    console.error('resultText要素が見つかりません');
+                    return;
+                }
+
+                var text = resultTextElement.textContent;
+                navigator.clipboard.writeText(text).then(function() {
                     showToast('✓ クリップボードにコピーしました');
                 }).catch(function(err) {
                     console.error('コピーエラー:', err);
@@ -903,7 +940,7 @@ async def root():
                         alert('クリップボードにコピーしました');
                     }
                 });
-            }
+            };
 
             // 保存ボタンのイベントリスナー
             saveBtn.addEventListener('click', async function() {
@@ -1106,35 +1143,137 @@ async def root():
                 });
             }
 
-            // モデルを削除
-            function deleteModel(modelName) {
-                if (!confirm('モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。')) {
-                    return;
+                // モデルを削除
+                function deleteModel(modelName) {
+                    if (!confirm('モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。')) {
+                        return;
+                    }
+
+                    fetch('/models/' + modelName, {
+                        method: 'DELETE'
+                    })
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            alert(data.message);
+                            loadModels();  // 一覧を再読み込み
+                        } else {
+                            alert('エラー: ' + data.message);
+                        }
+                    })
+                    .catch(function(error) {
+                        console.error('削除エラー:', error);
+                        alert('削除に失敗しました');
+                    });
                 }
 
-                fetch('/models/' + modelName, {
-                    method: 'DELETE'
-                })
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    if (data.success) {
-                        alert(data.message);
-                        loadModels();  // 一覧を再読み込み
-                    } else {
-                        alert('エラー: ' + data.message);
-                    }
-                })
-                .catch(function(error) {
-                    console.error('削除エラー:', error);
-                    alert('削除に失敗しました');
-                });
+                console.log('✅ initializeApp() 完了 - すべてのイベントリスナー設定完了');
+            } // initializeApp() 関数終了
+
+            // pywebview環境では 'pywebviewready' イベントで初期化
+            // ブラウザ環境では DOMContentLoaded で初期化（フォールバック）
+            function triggerInitializeApp(source) {
+                if (typeof initializeApp !== 'function') {
+                    console.error('initializeApp が未定義です');
+                    return;
+                }
+                console.log('🔁 triggerInitializeApp():', source);
+                initializeApp(source);
             }
+
+            // DOMContentLoaded（両環境でのフォールバック）
+            var appInitialized = false;
+
+            document.addEventListener('pywebviewready', function() {
+                console.log('📢 pywebviewready イベント検出');
+                safeInitialize('pywebviewready');
+            });
+
+            function safeInitialize(source) {
+                if (appInitialized) {
+                    console.log('⚠️ アプリは既に初期化されています (' + source + ')');
+                    return;
+                }
+                console.log('🚀 アプリ初期化実行: ' + source);
+                triggerInitializeApp(source);
+                appInitialized = true;
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    console.log('📢 DOMContentLoaded イベント検出');
+                    // pywebviewreadyが発火しなかった場合の保険として500ms待機後に初期化
+                    setTimeout(function() {
+                        safeInitialize('DOMContentLoaded (fallback)');
+                    }, 500);
+                });
+            } else {
+                // すでにDOMが読み込まれている場合は即座に初期化
+                console.log('📢 DOM already loaded - 即座に初期化');
+                safeInitialize('DOM already loaded');
+            }
+
+            // pywebviewready が発火しない場合のフォールバック
+            setTimeout(function() {
+                if (!window.__appInitialized) {
+                    console.warn('⚠️ pywebviewready 未発火 - タイムアウトフォールバック(2s)');
+                    triggerInitializeApp('timeout-2s');
+                }
+            }, 2000);
+
+            setTimeout(function() {
+                if (!window.__appInitialized) {
+                    console.warn('⚠️ pywebviewready 未発火 - タイムアウトフォールバック(5s)');
+                    triggerInitializeApp('timeout-5s');
+                }
+            }, 5000);
         </script>
     </body>
     </html>
     """)
     html_content = html_template.substitute(version=APP_VERSION)
     return HTMLResponse(content=html_content)
+
+
+@app.post("/upload")
+async def upload_audio(file: UploadFile = File(...)):
+    """
+    音声ファイルをアップロードしてfile_idを返す（pywebview環境用）
+
+    Args:
+        file: アップロードする音声ファイル
+
+    Returns:
+        dict: {"file_id": str, "original_name": str}
+    """
+    try:
+        # ファイル拡張子チェック
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400, detail=f"対応していないファイル形式です: {file_ext}"
+            )
+
+        # 一時ファイルとして保存
+        file_id = str(uuid.uuid4())
+        temp_file = UPLOAD_DIR / f"{file_id}{file_ext}"
+
+        with open(temp_file, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        logger.info(f"ファイル保存完了: {temp_file.name} ({len(content)} bytes)")
+
+        return JSONResponse(content={
+            "file_id": file_id,
+            "original_name": file.filename
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ アップロードエラー: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/health")

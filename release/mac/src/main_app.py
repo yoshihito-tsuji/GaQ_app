@@ -171,6 +171,36 @@ class Bridge:
     pywebview の js_api として使用
     """
 
+    def log_message(self, level: str, message: str):
+        """
+        JavaScriptからのログメッセージをPython側に転送
+
+        Args:
+            level: ログレベル (info, warning, error, debug)
+            message: ログメッセージ
+
+        Returns:
+            dict: {"success": bool}
+        """
+        try:
+            level = level.lower()
+            if level == "info":
+                logger.info(f"[JS] {message}")
+            elif level == "warning":
+                logger.warning(f"[JS] {message}")
+            elif level == "error":
+                logger.error(f"[JS] {message}")
+            elif level == "debug":
+                logger.debug(f"[JS] {message}")
+            else:
+                logger.info(f"[JS] {message}")
+
+            return {"success": True}
+
+        except Exception as e:
+            logger.error(f"❌ log_message エラー: {e}", exc_info=True)
+            return {"success": False}
+
     def save_transcription(self):
         """
         文字起こし結果をファイルに保存
@@ -256,6 +286,8 @@ class Bridge:
                 file_types=file_types
             )
 
+            logger.debug(f"create_file_dialog returned: {file_path} (type: {type(file_path)})")
+
             # ユーザーがキャンセルした場合
             if not file_path:
                 logger.info("📂 ファイル選択: キャンセル")
@@ -266,9 +298,12 @@ class Bridge:
                     "cancelled": True
                 }
 
-            # file_pathがタプルの場合は最初の要素を取得
-            if isinstance(file_path, tuple):
+            # file_pathがシーケンスの場合は最初の要素を取得（pywebviewはリストを返すことがある）
+            if isinstance(file_path, (tuple, list)):
                 file_path = file_path[0] if file_path else None
+
+            if file_path:
+                file_path = os.fspath(file_path)
 
             if not file_path:
                 return {
@@ -397,6 +432,69 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         easy_drag=True,  # ドラッグ可能
         js_api=bridge,  # JSブリッジを登録
     )
+
+    def setup_console_hook():
+        """
+        コンソールログをPython側にブリッジするJSコードを注入
+        """
+        try:
+            # console.log/error/warn をフックしてPython側に転送
+            hook_script = """
+            (function() {
+                // オリジナルのconsoleメソッドを保存
+                var originalLog = console.log;
+                var originalError = console.error;
+                var originalWarn = console.warn;
+
+                // console.log をフック
+                console.log = function() {
+                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
+                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                    }).join(' ');
+
+                    originalLog.apply(console, arguments);
+
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                        window.pywebview.api.log_message('info', message);
+                    }
+                };
+
+                // console.error をフック
+                console.error = function() {
+                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
+                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                    }).join(' ');
+
+                    originalError.apply(console, arguments);
+
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                        window.pywebview.api.log_message('error', message);
+                    }
+                };
+
+                // console.warn をフック
+                console.warn = function() {
+                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
+                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                    }).join(' ');
+
+                    originalWarn.apply(console, arguments);
+
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                        window.pywebview.api.log_message('warning', message);
+                    }
+                };
+
+                console.log('✅ Console hook installed - JS logs will be forwarded to Python');
+            })();
+            """
+            window.evaluate_js(hook_script)
+            logger.info("✅ コンソールログフック設定完了")
+        except Exception as e:
+            logger.error(f"❌ コンソールログフック設定エラー: {e}", exc_info=True)
+
+    # Webview起動後にコンソールフックを設定
+    window.events.loaded += setup_console_hook
 
     # Webviewを起動（メインスレッド）
     webview.start(debug=False)

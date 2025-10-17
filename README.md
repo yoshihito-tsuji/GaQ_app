@@ -11,7 +11,7 @@
 - **対応プラットフォーム**: macOS、Windows
 - **文字起こしエンジン**: faster-whisper
 
-## 🚨 **最優先課題 - pywebview環境での動作不良（2025-10-17）**
+## 🚨 **最優先課題 - pywebview環境での動作不良（2025-10-17更新）**
 
 ### ❌ 未解決の重大問題
 
@@ -21,34 +21,95 @@ Mac版v1.1.1において、pywebview環境特有の制約により以下の機�
 2. **モデル管理ボタンが反応しない** - 「モデル管理」ボタンのクリックイベントが発火しない
 3. **ドラッグ&ドロップが動作しない** - DataTransferオブジェクトへのアクセスが制限されている
 
-### 🔧 実装済みの修正（動作未確認）
+### 🔄 2025-10-17の作業内容（問題未解決）
 
-以下の修正を実装し、ビルド完了しましたが、問題は解決していません：
+以下の広範な修正を実装し、DMGをビルドしましたが、**ファイル選択機能は依然として動作しませんでした**：
 
-- `Bridge.select_audio_file()` - pywebview API経由でネイティブファイルダイアログ表示
-- `Bridge.upload_audio_file(file_path)` - ファイルアップロード処理
-- `/transcribe-stream-by-id` エンドポイント - file_id経由の文字起こし
-- モデル管理ボタンのイベントリスナー強化（`addEventListener` + `onclick`）
+#### 実装した修正
 
-### 📋 次回作業の最優先タスク
+1. **`/upload` エンドポイント追加** ([release/mac/src/main.py:1140-1178](release/mac/src/main.py#L1140))
+   - UploadFile を受け取り、file_id を返す仕組み
 
-1. **デバッグログの強化**
-   - JavaScriptコンソールログをPythonログファイルに出力
-   - pywebview API呼び出しの詳細なトレース
+2. **JavaScript初期化タイミング調整** ([release/mac/src/main.py:1184-1214](release/mac/src/main.py#L1184))
+   - `initializeApp()` 関数にリファクタ
+   - `pywebviewready` イベント対応
+   - `safeInitialize()` でフォールバック機構追加
 
-2. **pywebview環境の詳細調査**
-   - `window.pywebview.api` の利用可能性確認
-   - イベント伝播の動作検証
-   - 代替アプローチの検討（例: polling、別UIフレームワーク）
+3. **`Bridge.log_message()` メソッド追加** ([release/mac/src/main_app.py:174-202](release/mac/src/main_app.py#L174))
+   - JavaScriptログをPython側に転送
 
-3. **段階的な動作確認**
-   - 最小限のテストケースで各機能を個別検証
-   - ブラウザ環境との動作比較
+4. **コンソールログフック実装** ([release/mac/src/main_app.py:431-492](release/mac/src/main_app.py#L431))
+   - `window.evaluate_js` で console.log/error/warn をフック
+
+5. **`copyResult()` 関数のグローバル公開** ([release/mac/src/main.py:919-937](release/mac/src/main.py#L919))
+   - `window.copyResult` としてグローバルスコープに公開
+
+6. **ドラッグ&ドロップ非対応の明示** ([release/mac/src/main.py:605-628](release/mac/src/main.py#L605))
+   - pywebview環境でのドロップ時にトースト通知で案内
+
+#### 確認された問題点
+
+1. **`pywebviewready` イベントが発火していない**
+   - ログに `[JS] 📢 pywebviewready イベント検出` が出力されない
+   - `[JS] 🚀 initializeApp() 開始` も出力されない
+   - → JavaScript初期化が実行されていない可能性
+
+2. **コンソールフックのみ動作**
+   - `[JS] ✅ Console hook installed` のみ確認できる
+   - 他のJavaScriptログが一切出力されない
+
+3. **ビルドしたDMGで問題再現**
+   - ファイル選択エリアをクリックしても無反応
+   - Web Inspectorで手動デバッグが必要だが、GUI操作の制約で実施困難
+
+### 📋 次回作業の推奨アプローチ
+
+#### 最優先: 初期化問題の解決
+
+1. **`pywebviewready` イベントの代替**
+   - DOMContentLoadedで強制的に初期化
+   - タイマーベースのポーリングで `window.pywebview` の存在確認
+   - `window.evaluate_js` で直接 `initializeApp()` を呼び出す
+
+2. **最小限のテストケース作成**
+
+   ```javascript
+   // 超シンプルなテスト: ボタンクリックでalert表示
+   document.getElementById('uploadArea').onclick = function() {
+       alert('Click detected!');
+   };
+   ```
+
+3. **pywebview制約の回避策検討**
+   - Electron への移行を検討
+   - Tauri への移行を検討
+   - ネイティブGUIツールキット（tkinter、PySide6）への移行
+
+#### 段階的デバッグ手順
+
+1. **ログ出力の確認**
+
+   ```bash
+   # アプリ起動後、ログファイルを監視
+   tail -f ~/.gaq/logs/app.log
+   ```
+
+2. **Safari Web Inspectorでの検証**
+   - アプリ起動後、Safari → 開発 → [マシン名] → GaQ Offline Transcriber
+   - Console で `window.pywebview` の存在確認
+   - `typeof initializeApp` が `"function"` か確認
+
+3. **Bridge APIの直接テスト**
+
+   ```javascript
+   // Console で実行
+   window.pywebview.api.select_audio_file()
+   ```
 
 ### 📄 関連ドキュメント
 
-- **[~/Desktop/pywebview_fix_instructions.md](~/Desktop/pywebview_fix_instructions.md)** - 詳細な修正指示書（Codex）
-- **[docs/development/20251018_mac_multi_issue_fix.md](docs/development/20251018_mac_multi_issue_fix.md)** - 今回の修正作業レポート
+- **[docs/development/20251017_pywebview_improvements.md](docs/development/20251017_pywebview_improvements.md)** - 本日の修正作業詳細レポート
+- **[docs/development/20251016_mac_launch_error.md](docs/development/20251016_mac_launch_error.md)** - 前回の起動エラー修正
 
 ---
 
