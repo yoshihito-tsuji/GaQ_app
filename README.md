@@ -11,6 +11,12 @@
 - **対応プラットフォーム**: macOS、Windows
 - **文字起こしエンジン**: faster-whisper
 
+## ⚠️ 緊急対応課題（Mac版 v1.1.1）
+
+- 最新ビルド `GaQ_Transcriber_v1.1.1_mac.dmg` でアプリを起動すると、ウィンドウ上に `Internal Server Error` が表示され操作できない問題が発生中です。
+- 原因調査と修正対応は **翌営業日以降に着手予定**。進行状況は `docs/development/` 配下の最新ログを参照してください。
+- ユーザーへの配布・更新案内は、不具合の切り分けが完了するまで一時停止してください。
+
 ## 主要機能
 
 - faster-whisper文字起こし（Medium/Large-v3対応）

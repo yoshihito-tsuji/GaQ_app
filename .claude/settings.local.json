@@ -1,17 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)",
-      "Bash(git pull:*)",
-      "Bash(git stash:*)",
-      "Bash(git fetch:*)",
-      "Bash(git log:*)",
-      "Bash(git checkout:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\nchore: Claude Code設定を更新\n\ngit fetch、git log、git checkoutコマンドを自動承認リストに追加\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git push:*)",
-      "Bash(mkdir:*)",
-      "Bash(mv:*)",
-      "Bash(tree:*)"
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: HISTORY.mdに2025-10-16の作業を追記\n\nMac版起動エラー修正とPython 3.12固定ビルド対応の内容を開発履歴に記録\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)",
+      "Bash(xxd:*)",
+      "Bash(git check-attr:*)",
+      "Bash(pkill:*)",
+      "Bash(hdiutil attach:*)",
+      "Read(//Volumes/GaQ_Transcriber_v1.1.1/**)",
+      "Bash(hdiutil detach:*)",
+      "Bash(curl:*)",
+      "Bash(osascript:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
