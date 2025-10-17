@@ -9,6 +9,7 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
+from string import Template
 from typing import Optional
 
 import uvicorn
@@ -61,13 +62,13 @@ def cleanup_file(file_path: Path):
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """ルートエンドポイント（簡易UIを返す）"""
-    html_content = """
+    html_template = Template("""
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaQ Offline Transcriber {version} - オフラインAI文字おこし</title>
+    <title>GaQ Offline Transcriber - オフラインAI文字おこし</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦜</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -404,13 +405,34 @@ async def root():
                 font-size: 11px !important;
                 padding: 6px 10px !important;
             }
+                    /* トーストメッセージ */
+            #toast {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #5a9245;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                opacity: 0;
+                transform: translateY(-20px);
+                transition: all 0.3s ease;
+                z-index: 9999;
+                pointer-events: none;
+                font-size: 14px;
+            }
+            #toast.show {
+                opacity: 1;
+                transform: translateY(0);
+            }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>
                 <img src="/static/icon.png" alt="GaQ Logo" class="logo-icon">
-                GaQ Offline Transcriber {version}
+                GaQ Offline Transcriber
             </h1>
             <p class="subtitle">オフラインAI文字おこしアプリケーション</p>
 
@@ -477,6 +499,16 @@ async def root():
             var resultText = document.getElementById('resultText');
             var stats = document.getElementById('stats');
             var modelSelect = document.getElementById('modelSelect');
+                        // トーストメッセージ表示関数
+            function showToast(message, duration = 3000) {
+                var toast = document.getElementById('toast');
+                toast.textContent = message;
+                toast.classList.add('show');
+                setTimeout(function() {
+                    toast.classList.remove('show');
+                }, duration);
+            }
+
             var saveBtn = document.getElementById('saveBtn');
             var modelManageBtn = document.getElementById('modelManageBtn');
             var modelModal = document.getElementById('modelModal');
@@ -506,13 +538,42 @@ async def root():
                 document.body.addEventListener(eventName, preventDefaults, false);
             });
 
-            // クリックでファイル選択（Safari対応：イベント伝播を防止）
-            uploadArea.addEventListener('click', function(e) {
+            // クリックでファイル選択（pywebview/Safari対応）
+            uploadArea.addEventListener('click', async function(e) {
                 console.log('uploadArea clicked');
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('fileInput.click() executing');
-                fileInput.click();
+
+                // pywebview環境を検出してBridge APIを使用
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.select_audio_file) {
+                    console.log('🔧 pywebview環境を検出 - Bridge APIを使用');
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    try {
+                        console.log('📂 ファイル選択ダイアログを表示中...');
+                        var result = await window.pywebview.api.select_audio_file();
+                        console.log('✅ ファイル選択結果:', result);
+
+                        if (result.success && result.path) {
+                            console.log('📤 ファイルをアップロード中:', result.name);
+                            await uploadFileViaPywebview(result.path, result.name);
+                        } else if (!result.cancelled) {
+                            showToast('✗ ファイル選択に失敗しました');
+                            console.error('❌ ファイル選択失敗:', result);
+                        } else {
+                            console.log('ℹ️ ファイル選択がキャンセルされました');
+                        }
+                    } catch (error) {
+                        console.error('❌ ファイル選択エラー:', error);
+                        showToast('✗ ファイル選択に失敗しました');
+                    }
+                } else {
+                    // 通常のブラウザ環境 - 標準のfile inputを使用
+                    console.log('🌐 ブラウザ環境 - 標準file inputを使用');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('fileInput.click() executing');
+                    fileInput.click();
+                }
             });
 
             // ドラッグ進入時の処理
@@ -575,9 +636,42 @@ async def root():
                 console.log('File selected successfully:', file.name);
             }
 
+            // pywebview経由でファイルをアップロード
+            async function uploadFileViaPywebview(filePath, fileName) {
+                console.log('📤 uploadFileViaPywebview() 開始:', fileName);
+
+                try {
+                    // Bridge APIを使ってファイルをアップロード
+                    var uploadResult = await window.pywebview.api.upload_audio_file(filePath);
+                    console.log('✅ アップロード結果:', uploadResult);
+
+                    if (uploadResult.success && uploadResult.file_id) {
+                        console.log('✅ ファイルアップロード成功 - file_id:', uploadResult.file_id);
+
+                        // UIを更新
+                        fileName.textContent = '✅ ' + fileName;
+                        transcribeBtn.disabled = false;
+                        resultDiv.style.display = 'none';
+
+                        // selectedFileIDを保存（文字起こし時に使用）
+                        window.uploadedFileId = uploadResult.file_id;
+                        window.uploadedFileName = fileName;
+
+                        showToast('✓ ファイルを選択しました: ' + fileName);
+                    } else {
+                        console.error('❌ アップロード失敗:', uploadResult.message);
+                        showToast('✗ ' + uploadResult.message);
+                    }
+                } catch (error) {
+                    console.error('❌ アップロードエラー:', error);
+                    showToast('✗ アップロードに失敗しました');
+                }
+            }
+
             // 文字起こし実行（SSEでリアルタイム進捗表示）
             transcribeBtn.addEventListener('click', function() {
-                if (!selectedFile) {
+                // pywebview環境とブラウザ環境の両方に対応
+                if (!selectedFile && !window.uploadedFileId) {
                     alert('ファイルを選択してください');
                     return;
                 }
@@ -592,17 +686,26 @@ async def root():
                             var message = 'モデル「' + model + '」をダウンロードします（約' + data.size_gb + 'GB、数分かかります）。\\n続行しますか？';
 
                             if (confirm(message)) {
-                                startTranscription(selectedFile, model);
+                                // pywebview環境の場合はfile_idを使用、ブラウザ環境はFileオブジェクト
+                                if (window.uploadedFileId) {
+                                    startTranscriptionWithFileId(window.uploadedFileId, window.uploadedFileName, model);
+                                } else {
+                                    startTranscription(selectedFile, model);
+                                }
                             }
                         } else {
-                            startTranscription(selectedFile, model);
+                            // pywebview環境の場合はfile_idを使用、ブラウザ環境はFileオブジェクト
+                            if (window.uploadedFileId) {
+                                startTranscriptionWithFileId(window.uploadedFileId, window.uploadedFileName, model);
+                            } else {
+                                startTranscription(selectedFile, model);
+                            }
                         }
                     })
                     .catch(function(error) {
                         console.error('エラー:', error);
                         alert('モデルチェックに失敗しました');
                     });
-            });
 
             // 文字起こし実行関数
             function startTranscription(file, model) {
@@ -698,55 +801,164 @@ async def root():
                 });
             }
 
+            // file_idを使って文字起こしを実行（pywebview環境用）
+            function startTranscriptionWithFileId(fileId, fileName, model) {
+                console.log('文字起こし開始（file_id使用）:', fileId, fileName, 'モデル:', model);
+
+                transcribeBtn.disabled = true;
+                progress.style.display = 'block';
+                resultDiv.style.display = 'none';
+
+                // プログレスバーをリセット
+                var progressBarFill = document.getElementById('progressBarFill');
+                var progressStatus = document.getElementById('progressStatus');
+                progressBarFill.style.width = '0%';
+                progressBarFill.textContent = '0%';
+                progressStatus.textContent = '準備中...';
+
+                // file_idとmodelをクエリパラメータで送信
+                var url = '/transcribe-stream-by-id?file_id=' + encodeURIComponent(fileId) + '&model=' + encodeURIComponent(model);
+
+                fetch(url, {
+                    method: 'GET'
+                })
+                .then(function(response) {
+                    var reader = response.body.getReader();
+                    var decoder = new TextDecoder();
+                    var buffer = '';
+
+                    function processStream() {
+                        return reader.read().then(function(result) {
+                            if (result.done) {
+                                return;
+                            }
+
+                            // 受信したデータをデコード
+                            buffer += decoder.decode(result.value, { stream: true });
+
+                            // 改行で分割してイベントを処理
+                            var lines = buffer.split("\\n");
+                            buffer = lines.pop(); // 最後の不完全な行は保持
+
+                            for (var i = 0; i < lines.length; i++) {
+                                var line = lines[i];
+                                if (line.indexOf('data: ') === 0) {
+                                    var dataStr = line.slice(6);
+                                    if (dataStr.trim()) {
+                                        var data = JSON.parse(dataStr);
+
+                                        if (data.error) {
+                                            alert('エラー: ' + data.error);
+                                            progress.style.display = 'none';
+                                            transcribeBtn.disabled = false;
+                                            return;
+                                        }
+
+                                        if (data.progress !== undefined) {
+                                            // プログレスバー更新
+                                            progressBarFill.style.width = data.progress + '%';
+                                            progressBarFill.textContent = data.progress + '%';
+
+                                            if (data.status) {
+                                                progressStatus.textContent = data.status;
+                                            }
+                                        }
+
+                                        if (data.result && data.result.success) {
+                                            // 完了時の処理
+                                            resultText.textContent = data.result.text;
+                                            stats.innerHTML =
+                                                '<strong>文字数:</strong> ' + data.result.char_count.toLocaleString() + '文字 | ' +
+                                                '<strong>処理時間:</strong> ' + data.result.duration.toFixed(1) + '秒 | ' +
+                                                '<strong>セグメント:</strong> ' + data.result.segment_count;
+                                            resultDiv.style.display = 'block';
+                                            saveBtn.style.display = 'block';
+                                            progress.style.display = 'none';
+                                            transcribeBtn.disabled = false;
+                                        }
+                                    }
+                                }
+                            }
+
+                            return processStream();
+                        });
+                    }
+
+                    return processStream();
+                })
+                .catch(function(error) {
+                    alert('エラー: ' + error.message);
+                    progress.style.display = 'none';
+                    transcribeBtn.disabled = false;
+                });
+            }
+
             function copyResult() {
-                navigator.clipboard.writeText(resultText.textContent);
-                alert('クリップボードにコピーしました');
+                navigator.clipboard.writeText(resultText.value).then(function() {
+                    showToast('✓ クリップボードにコピーしました');
+                }).catch(function(err) {
+                    console.error('コピーエラー:', err);
+                    // フォールバック
+                    if (typeof alert !== 'undefined') {
+                        alert('クリップボードにコピーしました');
+                    }
+                });
             }
 
             // 保存ボタンのイベントリスナー
-            saveBtn.addEventListener('click', function() {
-                saveBtn.disabled = true;
-                saveBtn.textContent = '保存中...';
-
-                fetch('/save-transcription', {
-                    method: 'POST'
-                })
-                .then(function(response) {
-                    if (!response.ok) {
-                        throw new Error('保存に失敗しました');
+            saveBtn.addEventListener('click', async function() {
+                // pywebview環境かチェック
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.save_transcription) {
+                    // Python側で保存処理
+                    saveBtn.disabled = true;
+                    saveBtn.textContent = '保存中...';
+                    
+                    try {
+                        const result = await window.pywebview.api.save_transcription();
+                        
+                        if (result.success) {
+                            showToast('✓ ' + result.message);
+                        } else if (!result.cancelled) {
+                            showToast('✗ ' + result.message);
+                        }
+                        // キャンセル時は何も表示しない
+                        
+                    } catch (error) {
+                        console.error('保存エラー:', error);
+                        showToast('✗ 保存に失敗しました');
+                    } finally {
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = '💾 結果を保存（txt形式）';
                     }
-                    return response.blob();
-                })
-                .then(function(blob) {
-                    // ダウンロード
-                    var url = window.URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = url;
-
-                    // ファイル名生成（タイムスタンプ付き）
-                    var now = new Date();
-                    var timestamp = now.getFullYear() +
-                                   ('0' + (now.getMonth() + 1)).slice(-2) +
-                                   ('0' + now.getDate()).slice(-2) + '_' +
-                                   ('0' + now.getHours()).slice(-2) +
-                                   ('0' + now.getMinutes()).slice(-2) +
-                                   ('0' + now.getSeconds()).slice(-2);
-                    a.download = 'transcription_' + timestamp + '.txt';
-
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = '💾 結果を保存（txt形式）';
-                })
-                .catch(function(error) {
-                    console.error('保存エラー:', error);
-                    alert('保存に失敗しました');
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = '💾 結果を保存（txt形式）';
-                });
+                } else {
+                    // フォールバック: ブラウザ環境での従来のBlob保存
+                    saveBtn.disabled = true;
+                    saveBtn.textContent = '保存中...';
+                    
+                    fetch('/last-transcription')
+                        .then(response => response.json())
+                        .then(data => {
+                            var text = data.text;
+                            var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                            var url = URL.createObjectURL(blob);
+                            var a = document.createElement('a');
+                            a.href = url;
+                            a.download = 'transcription_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                            showToast('✓ ダウンロードを開始しました');
+                        })
+                        .catch(error => {
+                            console.error('保存エラー:', error);
+                            showToast('✗ 保存に失敗しました');
+                        })
+                        .finally(() => {
+                            saveBtn.disabled = false;
+                            saveBtn.textContent = '💾 結果を保存（txt形式）';
+                        });
+                }
             });
 
             // モデル選択変更時のイベントハンドラ
@@ -790,30 +1002,40 @@ async def root():
 
             console.log('All event listeners registered successfully');
 
-            // モデル管理ボタンのイベント
-            console.log('modelManageBtn:', modelManageBtn);
-            console.log('modelModal:', modelModal);
-
-            if (modelManageBtn) {
-                modelManageBtn.addEventListener('click', function(e) {
-                    console.log('🔧 モデル管理ボタンがクリックされました！');
-                    e.preventDefault();
-                    console.log('About to call openModelModal()');
-                    console.log('typeof openModelModal:', typeof openModelModal);
-                    openModelModal();
-                });
-                console.log('✅ モデル管理ボタンのイベントリスナー設定完了');
-            } else {
-                console.error('❌ modelManageBtn が見つかりません！');
-            }
-
-            // モーダルを開く
-            function openModelModal() {
+            // モーダルを開く関数（グローバルに定義）
+            window.openModelModal = function() {
                 console.log('📂 openModelModal() が呼ばれました');
                 console.log('modelModal.style.display before:', modelModal.style.display);
                 loadModels();
                 modelModal.style.display = 'block';
                 console.log('modelModal.style.display after:', modelModal.style.display);
+            };
+
+            // モデル管理ボタンのイベント（複数の方法で設定）
+            console.log('modelManageBtn:', modelManageBtn);
+            console.log('modelModal:', modelModal);
+
+            if (modelManageBtn) {
+                // 方法1: addEventListener（通常のブラウザ環境）
+                modelManageBtn.addEventListener('click', function(e) {
+                    console.log('🔧 モデル管理ボタンがクリックされました（addEventListener）');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.openModelModal();
+                }, true); // キャプチャフェーズで実行
+
+                // 方法2: onclick属性（pywebview環境での確実性向上）
+                modelManageBtn.onclick = function(e) {
+                    console.log('🔧 モデル管理ボタンがクリックされました（onclick）');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.openModelModal();
+                    return false;
+                };
+
+                console.log('✅ モデル管理ボタンのイベントリスナー設定完了');
+            } else {
+                console.error('❌ modelManageBtn が見つかりません！');
             }
 
             // モーダルを閉じる
@@ -866,7 +1088,11 @@ async def root():
                         html += '  <div style="width: 80px;"></div>';  // スペース確保
                     }
 
-                    html += '</div>';
+                    html += '
+
+            <!-- トーストメッセージ -->
+            <div id="toast"></div>
+        </div>';
                 });
 
                 modelList.innerHTML = html;
@@ -906,7 +1132,8 @@ async def root():
         </script>
     </body>
     </html>
-    """.format(version=APP_VERSION)
+    """)
+    html_content = html_template.substitute(version=APP_VERSION)
     return HTMLResponse(content=html_content)
 
 
@@ -1136,6 +1363,127 @@ async def transcribe_stream(
 
         except Exception as e:
             logger.error(f"❌ ストリーム処理エラー: {e}", exc_info=True)
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+            # エラー時もファイル削除
+            if temp_file:
+                background_tasks.add_task(cleanup_file, temp_file)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/transcribe-stream-by-id")
+async def transcribe_stream_by_id(
+    background_tasks: BackgroundTasks,
+    file_id: str,
+    model: str = DEFAULT_MODEL,
+):
+    """
+    アップロード済みファイルをfile_idで文字起こし（pywebview環境用）
+
+    Args:
+        file_id: アップロード済みファイルのID
+        model: 使用するモデル（medium, large-v3）
+
+    Returns:
+        Server-Sent Eventsストリーム
+    """
+
+    async def event_stream():
+        temp_file = None
+        try:
+            # file_idからファイルパスを検索
+            logger.info(f"file_idから文字起こし開始: {file_id}, model: {model}")
+
+            # UPLOAD_DIR内のファイルを検索
+            matching_files = list(UPLOAD_DIR.glob(f"{file_id}*"))
+
+            if not matching_files:
+                yield f"data: {json.dumps({'error': f'ファイルが見つかりません: {file_id}'})}\n\n"
+                return
+
+            temp_file = matching_files[0]
+            logger.info(f"ファイル検出: {temp_file}")
+
+            # ファイル拡張子チェック
+            file_ext = temp_file.suffix.lower()
+            if file_ext not in ALLOWED_EXTENSIONS:
+                yield f"data: {json.dumps({'error': f'対応していないファイル形式です: {file_ext}'})}\n\n"
+                return
+
+            # モデル名チェック
+            if model not in AVAILABLE_MODELS:
+                yield f"data: {json.dumps({'error': f'無効なモデル名です: {model}'})}\n\n"
+                return
+
+            # 進捗: モデル読み込み開始
+            from transcribe import check_model_exists
+
+            model_info = check_model_exists(model)
+            if not model_info["exists"]:
+                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください（数分かかります）\nダウンロード後、自動的に文字起こしを開始します"
+                yield f"data: {json.dumps({'progress': 5, 'status': status_msg})}\n\n"
+            else:
+                yield f"data: {json.dumps({'progress': 5, 'status': '音声認識モデル起動中...'})}\n\n"
+            await asyncio.sleep(0.1)
+
+            # 進捗コールバック関数
+            progress_queue = asyncio.Queue()
+            loop = asyncio.get_event_loop()
+
+            def progress_callback(progress: float):
+                """進捗を受け取ってキューに入れる"""
+                percentage = int(progress * 100)
+                try:
+                    loop.call_soon_threadsafe(progress_queue.put_nowait, percentage)
+                except Exception as e:
+                    logger.warning(f"進捗通知エラー: {e}")
+
+            # 文字起こしを別スレッドで実行
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                # 文字起こしタスクを開始
+                future = executor.submit(
+                    transcription_service.transcribe,
+                    audio_path=temp_file,
+                    model_name=model,
+                    language="ja",
+                    progress_callback=progress_callback,
+                )
+
+                # 進捗を送信しながら完了を待つ
+                last_progress = 5
+                while not future.done():
+                    try:
+                        progress = await asyncio.wait_for(progress_queue.get(), timeout=0.1)
+                        if progress > last_progress:
+                            last_progress = progress
+                            yield f"data: {json.dumps({'progress': progress, 'status': '文字起こし中...'})}\n\n"
+                    except TimeoutError:
+                        pass
+
+                # 結果を取得
+                result = future.result()
+
+            if result.get("success"):
+                # 結果をグローバル変数に保存
+                last_transcription["text"] = result.get("text", "")
+                last_transcription["processing_time"] = result.get("duration", 0)
+                last_transcription["timestamp"] = datetime.now()
+
+                # 完了
+                yield f"data: {json.dumps({'progress': 100, 'status': '完了', 'result': result})}\n\n"
+            else:
+                # エラー
+                yield f"data: {json.dumps({'error': result.get('error', '不明なエラー')})}\n\n"
+
+            # バックグラウンドでファイル削除
+            if temp_file:
+                background_tasks.add_task(cleanup_file, temp_file)
+
+        except Exception as e:
+            logger.error(f"❌ ストリーム処理エラー (file_id): {e}", exc_info=True)
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
             # エラー時もファイル削除

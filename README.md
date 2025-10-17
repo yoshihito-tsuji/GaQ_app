@@ -11,11 +11,71 @@
 - **対応プラットフォーム**: macOS、Windows
 - **文字起こしエンジン**: faster-whisper
 
-## ⚠️ 緊急対応課題（Mac版 v1.1.1）
+## 🚨 **最優先課題 - pywebview環境での動作不良（2025-10-17）**
 
-- 最新ビルド `GaQ_Transcriber_v1.1.1_mac.dmg` でアプリを起動すると、ウィンドウ上に `Internal Server Error` が表示され操作できない問題が発生中です。
-- 原因調査と修正対応は **翌営業日以降に着手予定**。進行状況は `docs/development/` 配下の最新ログを参照してください。
-- ユーザーへの配布・更新案内は、不具合の切り分けが完了するまで一時停止してください。
+### ❌ 未解決の重大問題
+
+Mac版v1.1.1において、pywebview環境特有の制約により以下の機能が動作しません：
+
+1. **ファイル選択ができない** - ファイル選択エリアをクリックしてもダイアログが表示されない
+2. **モデル管理ボタンが反応しない** - 「モデル管理」ボタンのクリックイベントが発火しない
+3. **ドラッグ&ドロップが動作しない** - DataTransferオブジェクトへのアクセスが制限されている
+
+### 🔧 実装済みの修正（動作未確認）
+
+以下の修正を実装し、ビルド完了しましたが、問題は解決していません：
+
+- `Bridge.select_audio_file()` - pywebview API経由でネイティブファイルダイアログ表示
+- `Bridge.upload_audio_file(file_path)` - ファイルアップロード処理
+- `/transcribe-stream-by-id` エンドポイント - file_id経由の文字起こし
+- モデル管理ボタンのイベントリスナー強化（`addEventListener` + `onclick`）
+
+### 📋 次回作業の最優先タスク
+
+1. **デバッグログの強化**
+   - JavaScriptコンソールログをPythonログファイルに出力
+   - pywebview API呼び出しの詳細なトレース
+
+2. **pywebview環境の詳細調査**
+   - `window.pywebview.api` の利用可能性確認
+   - イベント伝播の動作検証
+   - 代替アプローチの検討（例: polling、別UIフレームワーク）
+
+3. **段階的な動作確認**
+   - 最小限のテストケースで各機能を個別検証
+   - ブラウザ環境との動作比較
+
+### 📄 関連ドキュメント
+
+- **[~/Desktop/pywebview_fix_instructions.md](~/Desktop/pywebview_fix_instructions.md)** - 詳細な修正指示書（Codex）
+- **[docs/development/20251018_mac_multi_issue_fix.md](docs/development/20251018_mac_multi_issue_fix.md)** - 今回の修正作業レポート
+
+---
+
+## ✅ Mac版 v1.1.1 - 一部修正完了（2025-10-17更新）
+
+### 修正完了した内容
+
+- **問題**: HTMLテンプレートの波括弧衝突により`Internal Server Error`が発生
+- **修正**: `string.Template`を使用した安全なテンプレート処理に変更
+- **検証**: 起動・UI表示は正常動作確認済み
+
+### ⚠️ 未解決の問題
+
+- ファイル選択機能が動作しない（pywebview制約）
+- モデル管理ボタンが反応しない（pywebview制約）
+
+### 配布状況
+
+- ⏳ **重大な動作不良のため、v1.1.1は配布保留中**
+- ⏳ pywebview問題の解決後に配布予定
+
+### 詳細レポート
+
+修正内容とテスト結果の詳細は以下を参照してください：
+
+- **[docs/development/20251017_mac_smoke_test.md](docs/development/20251017_mac_smoke_test.md)** - 初期修正・検証レポート
+- **[docs/development/20251018_mac_multi_issue_fix.md](docs/development/20251018_mac_multi_issue_fix.md)** - pywebview問題修正作業レポート（未完了）
 
 ## 主要機能
 
