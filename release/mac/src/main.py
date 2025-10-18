@@ -68,7 +68,7 @@ async def root():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GaQ Offline Transcriber - オフラインAI文字おこし</title>
+    <title>GaQ Offline Transcriber - オフラインAI文字起こし</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦜</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -434,7 +434,7 @@ async def root():
                 <img src="/static/icon.png" alt="GaQ Logo" class="logo-icon">
                 GaQ Offline Transcriber
             </h1>
-            <p class="subtitle">オフラインAI文字おこしアプリケーション</p>
+            <p class="subtitle">オフラインAI文字起こしアプリケーション</p>
 
             <div class="upload-area" id="uploadArea">
                 <p>📁 音声ファイルをドラッグ&ドロップ<br>または<br>クリックして選択</p>
@@ -474,6 +474,8 @@ async def root():
             </div>
         </div>
 
+        <div id="toast"></div>
+
         <!-- モデル管理モーダル -->
         <div id="modelModal" class="modal">
             <div class="modal-content">
@@ -488,19 +490,80 @@ async def root():
         </div>
 
         <script>
-            console.log('GaQ JavaScript starting...');
+            // ★コンソールフックを最優先で設定（<script>タグの最初）
+            (function() {
+                // オリジナルのconsoleメソッドを保存
+                var originalLog = console.log;
+                var originalError = console.error;
+                var originalWarn = console.warn;
+
+                // console.log をフック
+                console.log = function() {
+                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
+                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                    }).join(' ');
+
+                    originalLog.apply(console, arguments);
+
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                        window.pywebview.api.log_message('info', message);
+                    }
+                };
+
+                // console.error をフック
+                console.error = function() {
+                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
+                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                    }).join(' ');
+
+                    originalError.apply(console, arguments);
+
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                        window.pywebview.api.log_message('error', message);
+                    }
+                };
+
+                // console.warn をフック
+                console.warn = function() {
+                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
+                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
+                    }).join(' ');
+
+                    originalWarn.apply(console, arguments);
+
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                        window.pywebview.api.log_message('warning', message);
+                    }
+                };
+
+                console.log('✅ Console hook installed inline - JS logs will be forwarded to Python');
+            })();
+
+            console.log('===== GaQ JavaScript starting =====');
+            console.log('document.readyState:', document.readyState);
+            console.log('window.pywebview exists:', !!window.pywebview);
+            console.log('window.pywebview:', window.pywebview);
+            console.log('window.pywebview.api:', window.pywebview ? window.pywebview.api : 'N/A');
+            console.log('window.pywebview.api.select_audio_file:', window.pywebview && window.pywebview.api ? window.pywebview.api.select_audio_file : 'N/A');
+            console.log('===================================');
 
             // pywebview API の初期化タイミングを調整
             // pywebview環境では 'pywebviewready' イベントを待ち、ブラウザ環境では DOMContentLoaded で初期化
             function initializeApp(trigger) {
+                console.log('🔧 initializeApp() 呼び出し - trigger:', trigger);
+
                 if (window.__appInitialized) {
                     console.log('⏭ initializeApp() は既に実行済みです (trigger:', window.__appInitialized_source, ')');
                     return;
                 }
-                window.__appInitialized = true;
-                window.__appInitialized_source = trigger || 'unknown';
-                console.log('🚀 initializeApp() 開始 - trigger:', window.__appInitialized_source);
-                console.log('pywebview API available:', !!window.pywebview);
+
+                console.log('🚀 initializeApp() 開始 - trigger:', trigger);
+                console.log('🔍 window.pywebview exists:', !!window.pywebview);
+                console.log('🔍 window.pywebview.api:', window.pywebview ? window.pywebview.api : 'N/A');
+                console.log('🔍 window.pywebview.api.select_audio_file:', window.pywebview && window.pywebview.api && window.pywebview.api.select_audio_file ? 'function' : 'N/A');
+
+                try {
+                console.log('📋 DOM要素の取得を開始...');
 
                 var uploadArea = document.getElementById('uploadArea');
                 var fileInput = document.getElementById('fileInput');
@@ -518,14 +581,20 @@ async def root():
                 var modelList = document.getElementById('modelList');
 
                 // 要素の存在確認（デバッグ用）
-                console.log('uploadArea:', uploadArea);
-                console.log('fileInput:', fileInput);
-                console.log('transcribeBtn:', transcribeBtn);
+                console.log('✅ DOM要素取得完了:');
+                console.log('  uploadArea:', !!uploadArea);
+                console.log('  fileInput:', !!fileInput);
+                console.log('  transcribeBtn:', !!transcribeBtn);
+                console.log('  modelManageBtn:', !!modelManageBtn);
+                console.log('  modelModal:', !!modelModal);
 
                 if (!uploadArea || !fileInput || !transcribeBtn) {
-                    console.error('Required elements not found!');
+                    console.error('❌ 必須要素が見つかりません!');
+                    console.error('  uploadArea:', uploadArea);
+                    console.error('  fileInput:', fileInput);
+                    console.error('  transcribeBtn:', transcribeBtn);
                     alert('エラー: ページの読み込みに失敗しました。ページを再読み込みしてください。');
-                    return;
+                    throw new Error('Required DOM elements not found');
                 }
 
                 var selectedFile = null;
@@ -547,12 +616,16 @@ async def root():
                 e.stopPropagation();
             }
 
+            console.log('📝 イベントリスナーの登録を開始...');
+
             // ページ全体でドラッグ&ドロップのデフォルト動作を防止（Safari対応）
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function(eventName) {
                 document.body.addEventListener(eventName, preventDefaults, false);
             });
+            console.log('✅ ドラッグ&ドロップ防止イベント登録完了');
 
             // クリックでファイル選択（pywebview/Safari対応）
+            console.log('📝 uploadArea クリックイベント登録中...');
             uploadArea.addEventListener('click', async function(e) {
                 console.log('uploadArea clicked');
 
@@ -589,6 +662,7 @@ async def root():
                     fileInput.click();
                 }
             });
+            console.log('✅ uploadArea クリックイベント登録完了');
 
             // ドラッグ進入時の処理
             uploadArea.addEventListener('dragenter', function(e) {
@@ -598,7 +672,11 @@ async def root():
 
             // ドラッグオーバー時の処理
             uploadArea.addEventListener('dragover', function(e) {
-                preventDefaults(e);
+                // pywebview環境ではPython側のDOM dragoverハンドラーに任せる
+                if (!(window.pywebview && window.pywebview.api)) {
+                    // ブラウザ環境のみpreventDefaultsを呼ぶ
+                    preventDefaults(e);
+                }
                 uploadArea.classList.add('dragover');
             });
 
@@ -609,20 +687,51 @@ async def root():
             });
 
             // ドロップ時の処理
-            // 【仕様】pywebview環境では e.dataTransfer.files からファイルパスを取得できないため、
-            // ドラッグ&ドロップは非対応とし、クリック選択を案内する方針とする。
-            // ブラウザ環境では従来通りドロップ可能。
-            uploadArea.addEventListener('drop', function(e) {
-                preventDefaults(e);
+            // 【仕様】pywebview環境では Python側のDOM dropハンドラーがファイルパスを取得し、
+            // JavaScriptに pywebviewFileDrop カスタムイベントを発火する。
+            // ブラウザ環境では従来通り e.dataTransfer.files から取得。
+            uploadArea.addEventListener('drop', async function(e) {
                 uploadArea.classList.remove('dragover');
 
                 // pywebview環境かチェック
                 if (window.pywebview && window.pywebview.api) {
-                    // pywebview環境ではドロップ非対応のため案内
-                    showToast('⚠️ ドラッグ&ドロップは未対応です。クリックしてファイルを選択してください', 4000);
-                    console.warn('⚠️ pywebview環境ではドラッグ&ドロップは非対応です');
+                    preventDefaults(e);
+                    console.log('🎯 pywebview環境: ドロップされたファイルを処理します');
+
+                    try {
+                        var uriList = e.dataTransfer.getData('text/uri-list') || '';
+                        var filePath = null;
+
+                        if (uriList) {
+                            var lines = uriList.split('\\n').filter(function(line) {
+                                return line && line.trim() !== '' && !line.startsWith('#');
+                            });
+                            if (lines.length > 0) {
+                                var firstUri = lines[0];
+                                if (firstUri.startsWith('file://')) {
+                                    filePath = decodeURIComponent(firstUri.replace('file://', ''));
+                                }
+                            }
+                        }
+
+                        if (!filePath) {
+                            console.warn('⚠️ ドロップされたデータからファイルパスを取得できませんでした');
+                            showToast('✗ ドロップしたファイルのパスを取得できませんでした');
+                            return;
+                        }
+
+                        var fileName = filePath.split(/[\\\\/]/).pop();
+                        console.log('📂 ドロップされたファイル (pywebview):', fileName, '(' + filePath + ')');
+                        await uploadFileViaPywebview(filePath, fileName);
+                    } catch (dropError) {
+                        console.error('❌ ドロップ処理エラー:', dropError);
+                        showToast('✗ ドロップ処理に失敗しました');
+                    }
                     return;
                 }
+
+                // ブラウザ環境では従来通りpreventDefaultsを呼ぶ
+                preventDefaults(e);
 
                 // ブラウザ環境では従来通りファイル処理
                 var files = e.dataTransfer.files;
@@ -632,14 +741,38 @@ async def root():
                     showToast('✗ ファイルが選択されていません', 3000);
                 }
             });
+            console.log('✅ uploadArea ドラッグ&ドロップイベント登録完了');
 
             // ファイル選択時の処理
+            console.log('📝 fileInput changeイベント登録中...');
             fileInput.addEventListener('change', function(e) {
                 console.log('fileInput change event fired', e.target.files);
                 if (e.target.files.length > 0) {
                     handleFile(e.target.files[0]);
                 }
             });
+            console.log('✅ fileInput changeイベント登録完了');
+
+            // pywebview環境でのドラッグ&ドロップ処理
+            // Python側のDOM dropハンドラーから発火されるカスタムイベントを受け取る
+            console.log('📝 pywebviewFileDrop カスタムイベントリスナー登録中...');
+            window.addEventListener('pywebviewFileDrop', function(e) {
+                console.log('📥 pywebviewFileDrop イベント受信:', e.detail);
+                var filePath = e.detail.path;
+                var fileName = e.detail.name;
+
+                if (!filePath) {
+                    console.error('❌ ファイルパスが取得できませんでした');
+                    showToast('✗ ファイルパスが取得できませんでした', 3000);
+                    return;
+                }
+
+                console.log('📂 ドロップされたファイル:', fileName, '(' + filePath + ')');
+
+                // pywebview経由でファイルをアップロード
+                uploadFileViaPywebview(filePath, fileName);
+            });
+            console.log('✅ pywebviewFileDrop カスタムイベントリスナー登録完了');
 
             // ファイル処理関数
             function handleFile(file) {
@@ -685,6 +818,7 @@ async def root():
                         // selectedFileIDを保存（文字起こし時に使用）
                         window.uploadedFileId = uploadResult.file_id;
                         window.uploadedFileName = displayName;
+                        window.uploadedFilePath = filePath;
 
                         showToast('✓ ファイルを選択しました: ' + displayName);
                     } else {
@@ -697,8 +831,32 @@ async def root():
                 }
             }
 
+            // pywebview環境用: 文字起こし前に常に最新のアップロードを準備
+            async function refreshPywebviewUploadIfNeeded() {
+                if (window.pywebview && window.pywebview.api && window.uploadedFilePath) {
+                    try {
+                        console.log('♻️ pywebview環境: ファイルを再アップロードして最新状態にします');
+                        var reuploadResult = await window.pywebview.api.upload_audio_file(window.uploadedFilePath);
+                        console.log('♻️ 再アップロード結果:', reuploadResult);
+                        if (reuploadResult.success && reuploadResult.file_id) {
+                            window.uploadedFileId = reuploadResult.file_id;
+                            return true;
+                        }
+                        var message = (reuploadResult && reuploadResult.message) ? reuploadResult.message : '再アップロードに失敗しました';
+                        showToast('✗ ' + message);
+                        return false;
+                    } catch (reuploadError) {
+                        console.error('❌ 再アップロードエラー:', reuploadError);
+                        showToast('✗ 再アップロード中にエラーが発生しました');
+                        return false;
+                    }
+                }
+                return true;
+            }
+
             // 文字起こし実行（SSEでリアルタイム進捗表示）
-            transcribeBtn.addEventListener('click', function() {
+            console.log('📝 transcribeBtn clickイベント登録中...');
+            transcribeBtn.addEventListener('click', async function() {
                 // pywebview環境とブラウザ環境の両方に対応
                 if (!selectedFile && !window.uploadedFileId) {
                     alert('ファイルを選択してください');
@@ -707,34 +865,38 @@ async def root():
 
                 var model = modelSelect.value;
 
-                // モデル存在確認
-                fetch('/check-model/' + model)
-                    .then(function(response) { return response.json(); })
-                    .then(function(data) {
-                        if (!data.exists) {
-                            var message = 'モデル「' + model + '」をダウンロードします（約' + data.size_gb + 'GB、数分かかります）。\\n続行しますか？';
+                try {
+                    var response = await fetch('/check-model/' + model);
+                    var data = await response.json();
 
-                            if (confirm(message)) {
-                                // pywebview環境の場合はfile_idを使用、ブラウザ環境はFileオブジェクト
-                                if (window.uploadedFileId) {
-                                    startTranscriptionWithFileId(window.uploadedFileId, window.uploadedFileName, model);
-                                } else {
-                                    startTranscription(selectedFile, model);
-                                }
-                            }
-                        } else {
-                            // pywebview環境の場合はfile_idを使用、ブラウザ環境はFileオブジェクト
-                            if (window.uploadedFileId) {
-                                startTranscriptionWithFileId(window.uploadedFileId, window.uploadedFileName, model);
-                            } else {
-                                startTranscription(selectedFile, model);
+                    async function proceedTranscription() {
+                        if (window.uploadedFileId && window.pywebview && window.pywebview.api) {
+                            var refreshed = await refreshPywebviewUploadIfNeeded();
+                            if (!refreshed) {
+                                return;
                             }
                         }
-                    })
-                    .catch(function(error) {
-                        console.error('エラー:', error);
-                        alert('モデルチェックに失敗しました');
-                    });
+
+                        if (window.uploadedFileId) {
+                            startTranscriptionWithFileId(window.uploadedFileId, window.uploadedFileName, model);
+                        } else {
+                            startTranscription(selectedFile, model);
+                        }
+                    }
+
+                    if (!data.exists) {
+                        var message = 'モデル「' + model + '」をダウンロードします（約' + data.size_gb + 'GB）。';
+                        alert(message);
+                        await proceedTranscription();
+                    } else {
+                        await proceedTranscription();
+                    }
+                } catch (error) {
+                    console.error('エラー:', error);
+                    alert('モデルチェックに失敗しました');
+                }
+            });
+            console.log('✅ transcribeBtn clickイベント登録完了');
 
             // 文字起こし実行関数
             function startTranscription(file, model) {
@@ -923,58 +1085,75 @@ async def root():
             }
 
             // copyResult関数をグローバルスコープに公開（onclick属性から呼び出せるようにする）
-            window.copyResult = function() {
+            window.copyResult = async function() {
+                console.log('📋 copyResult() 呼び出し');
                 var resultTextElement = document.getElementById('resultText');
-                if (!resultTextElement) {
-                    console.error('resultText要素が見つかりません');
+                if (!resultTextElement || !resultTextElement.textContent) {
+                    console.error('❌ 結果テキストが見つかりません');
+                    alert('コピーできる文字起こし結果がありません');
                     return;
                 }
 
                 var text = resultTextElement.textContent;
-                navigator.clipboard.writeText(text).then(function() {
-                    showToast('✓ クリップボードにコピーしました');
-                }).catch(function(err) {
-                    console.error('コピーエラー:', err);
-                    // フォールバック
+                console.log('📋 コピー対象テキスト:', text.substring(0, 50) + '... (全' + text.length + '文字)');
+
+                try {
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.copy_to_clipboard) {
+                        console.log('📋 pywebview.api.copy_to_clipboard() を呼び出します');
+                        var copyResult = await window.pywebview.api.copy_to_clipboard(text);
+                        console.log('📋 copy_to_clipboard() 結果:', copyResult);
+
+                        if (copyResult && copyResult.success) {
+                            showToast('✓ ' + (copyResult.message || 'クリップボードにコピーしました'));
+                        } else if (copyResult && copyResult.message) {
+                            showToast('✗ ' + copyResult.message);
+                        } else {
+                            showToast('✗ クリップボードにコピーできませんでした');
+                        }
+                    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                        console.log('📋 navigator.clipboard.writeText() を使用');
+                        await navigator.clipboard.writeText(text);
+                        showToast('✓ クリップボードにコピーしました');
+                    } else {
+                        throw new Error('Clipboard API unavailable');
+                    }
+                } catch (err) {
+                    console.error('❌ コピーエラー:', err);
                     if (typeof alert !== 'undefined') {
                         alert('クリップボードにコピーしました');
                     }
-                });
+                }
             };
 
             // 保存ボタンのイベントリスナー
             saveBtn.addEventListener('click', async function() {
-                // pywebview環境かチェック
-                if (window.pywebview && window.pywebview.api && window.pywebview.api.save_transcription) {
-                    // Python側で保存処理
-                    saveBtn.disabled = true;
-                    saveBtn.textContent = '保存中...';
-                    
-                    try {
+                if (!resultText.textContent) {
+                    showToast('✗ 保存する文字起こし結果がありません');
+                    return;
+                }
+
+                saveBtn.disabled = true;
+                saveBtn.textContent = '保存中...';
+
+                try {
+                    if (window.pywebview && window.pywebview.api && window.pywebview.api.save_transcription) {
                         const result = await window.pywebview.api.save_transcription();
-                        
+
                         if (result.success) {
                             showToast('✓ ' + result.message);
                         } else if (!result.cancelled) {
                             showToast('✗ ' + result.message);
                         }
-                        // キャンセル時は何も表示しない
-                        
-                    } catch (error) {
-                        console.error('保存エラー:', error);
-                        showToast('✗ 保存に失敗しました');
-                    } finally {
-                        saveBtn.disabled = false;
-                        saveBtn.textContent = '💾 結果を保存（txt形式）';
-                    }
-                } else {
-                    // フォールバック: ブラウザ環境での従来のBlob保存
-                    saveBtn.disabled = true;
-                    saveBtn.textContent = '保存中...';
-                    
-                    fetch('/last-transcription')
-                        .then(response => response.json())
-                        .then(data => {
+                    } else {
+                        const response = await fetch('/last-transcription');
+                        if (!response.ok) {
+                            throw new Error('保存するデータの取得に失敗しました');
+                        }
+                        const data = await response.json();
+
+                        if (!data || !data.text) {
+                            showToast('✗ 保存する文字起こし結果がありません');
+                        } else {
                             var text = data.text;
                             var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
                             var url = URL.createObjectURL(blob);
@@ -986,15 +1165,14 @@ async def root():
                             document.body.removeChild(a);
                             URL.revokeObjectURL(url);
                             showToast('✓ ダウンロードを開始しました');
-                        })
-                        .catch(error => {
-                            console.error('保存エラー:', error);
-                            showToast('✗ 保存に失敗しました');
-                        })
-                        .finally(() => {
-                            saveBtn.disabled = false;
-                            saveBtn.textContent = '💾 結果を保存（txt形式）';
-                        });
+                        }
+                    }
+                } catch (error) {
+                    console.error('保存エラー:', error);
+                    showToast('✗ 保存に失敗しました');
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = '💾 結果を保存（txt形式）';
                 }
             });
 
@@ -1049,11 +1227,13 @@ async def root():
             };
 
             // モデル管理ボタンのイベント（複数の方法で設定）
-            console.log('modelManageBtn:', modelManageBtn);
-            console.log('modelModal:', modelModal);
+            console.log('📝 モデル管理ボタンイベント登録中...');
+            console.log('  modelManageBtn:', !!modelManageBtn);
+            console.log('  modelModal:', !!modelModal);
 
             if (modelManageBtn) {
                 // 方法1: addEventListener（通常のブラウザ環境）
+                console.log('📝 modelManageBtn addEventListener登録中...');
                 modelManageBtn.addEventListener('click', function(e) {
                     console.log('🔧 モデル管理ボタンがクリックされました（addEventListener）');
                     e.preventDefault();
@@ -1125,11 +1305,7 @@ async def root():
                         html += '  <div style="width: 80px;"></div>';  // スペース確保
                     }
 
-                    html += '
-
-            <!-- トーストメッセージ -->
-            <div id="toast"></div>
-        </div>';
+                    html += '</div>';
                 });
 
                 modelList.innerHTML = html;
@@ -1167,7 +1343,17 @@ async def root():
                     });
                 }
 
-                console.log('✅ initializeApp() 完了 - すべてのイベントリスナー設定完了');
+                // ★すべてのイベントリスナー登録が成功した後にフラグを立てる
+                window.__appInitialized = true;
+                window.__appInitialized_source = trigger || 'unknown';
+                console.log('✅ initializeApp() 完了 - すべてのイベントリスナー設定完了 (trigger:', trigger, ')');
+
+                } catch (error) {
+                    console.error('❌ initializeApp() 失敗:', error);
+                    console.error('エラー詳細:', error.stack);
+                    alert('アプリケーションの初期化に失敗しました。ページを再読み込みしてください。\\nエラー: ' + error.message);
+                    // エラー時はフラグを立てない → 再試行可能
+                }
             } // initializeApp() 関数終了
 
             // pywebview環境では 'pywebviewready' イベントで初期化
@@ -1190,43 +1376,86 @@ async def root():
             });
 
             function safeInitialize(source) {
+                console.log('🔍 safeInitialize() 呼び出し - source:', source, ', appInitialized:', appInitialized);
                 if (appInitialized) {
-                    console.log('⚠️ アプリは既に初期化されています (' + source + ')');
+                    console.log('⚠️ アプリは既に初期化されています (' + source + ') - スキップ');
                     return;
                 }
                 console.log('🚀 アプリ初期化実行: ' + source);
                 triggerInitializeApp(source);
-                appInitialized = true;
+
+                // ★initializeApp()の成功を確認してからフラグを立てる
+                if (window.__appInitialized) {
+                    appInitialized = true;
+                    console.log('✅ safeInitialize() 完了 - appInitialized:', appInitialized);
+                } else {
+                    console.error('❌ initializeApp() 失敗 - 再試行可能（appInitializedフラグは立てない）');
+                }
+            }
+
+            function tryImmediateInitialization(source) {
+                if (appInitialized || window.__appInitialized) {
+                    console.log('⚠️ 既に初期化済みのため即時初期化をスキップ:', source);
+                    return true;
+                }
+                if (window.pywebview && window.pywebview.api) {
+                    console.log('🟢 pywebview API を検出 (' + source + ') - safeInitialize を実行');
+                    safeInitialize(source);
+                    return true;
+                }
+                console.log('⏳ pywebview API が未準備 (' + source + ')');
+                return false;
             }
 
             if (document.readyState === 'loading') {
+                console.log('⏳ document.readyState === loading - DOMContentLoadedを待機');
                 document.addEventListener('DOMContentLoaded', function() {
                     console.log('📢 DOMContentLoaded イベント検出');
-                    // pywebviewreadyが発火しなかった場合の保険として500ms待機後に初期化
-                    setTimeout(function() {
-                        safeInitialize('DOMContentLoaded (fallback)');
-                    }, 500);
+                    safeInitialize('DOMContentLoaded');
                 });
             } else {
                 // すでにDOMが読み込まれている場合は即座に初期化
-                console.log('📢 DOM already loaded - 即座に初期化');
+                console.log('📢 DOM already loaded (readyState:', document.readyState, ') - 即座に初期化');
                 safeInitialize('DOM already loaded');
+            }
+
+            if (!tryImmediateInitialization('inline-check')) {
+                var initPollAttempts = 0;
+                var initPollTimer = setInterval(function() {
+                    if (window.__appInitialized) {
+                        clearInterval(initPollTimer);
+                        return;
+                    }
+                    initPollAttempts += 1;
+                    if (tryImmediateInitialization('poll-' + initPollAttempts)) {
+                        clearInterval(initPollTimer);
+                    } else if (initPollAttempts >= 20) {
+                        clearInterval(initPollTimer);
+                        console.warn('⚠️ pywebview API polling がタイムアウトしました (20 attempts)');
+                    }
+                }, 300);
             }
 
             // pywebviewready が発火しない場合のフォールバック
             setTimeout(function() {
+                console.log('🕐 タイムアウトチェック(1s) - __appInitialized:', window.__appInitialized);
                 if (!window.__appInitialized) {
-                    console.warn('⚠️ pywebviewready 未発火 - タイムアウトフォールバック(2s)');
-                    triggerInitializeApp('timeout-2s');
+                    console.warn('⚠️ 初期化未完了 - タイムアウトフォールバック(1s)で初期化実行');
+                    triggerInitializeApp('timeout-1s');
+                } else {
+                    console.log('✅ 既に初期化済み - スキップ');
                 }
-            }, 2000);
+            }, 1000);
 
             setTimeout(function() {
+                console.log('🕐 タイムアウトチェック(3s) - __appInitialized:', window.__appInitialized);
                 if (!window.__appInitialized) {
-                    console.warn('⚠️ pywebviewready 未発火 - タイムアウトフォールバック(5s)');
-                    triggerInitializeApp('timeout-5s');
+                    console.warn('⚠️ 初期化未完了 - タイムアウトフォールバック(3s)で初期化実行');
+                    triggerInitializeApp('timeout-3s');
+                } else {
+                    console.log('✅ 既に初期化済み - スキップ');
                 }
-            }, 5000);
+            }, 3000);
         </script>
     </body>
     </html>
@@ -1436,7 +1665,7 @@ async def transcribe_stream(
             model_info = check_model_exists(model)
             if not model_info["exists"]:
                 # モデルが未ダウンロード - ダウンロードに数分かかることを明示
-                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください（数分かかります）\nダウンロード後、自動的に文字起こしを開始します"
+                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください\n\nダウンロード後、自動的に文字起こしを開始します"
                 yield f"data: {json.dumps({'progress': 5, 'status': status_msg})}\n\n"
             else:
                 yield f"data: {json.dumps({'progress': 5, 'status': '音声認識モデル起動中...'})}\n\n"
@@ -1560,7 +1789,7 @@ async def transcribe_stream_by_id(
 
             model_info = check_model_exists(model)
             if not model_info["exists"]:
-                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください（数分かかります）\nダウンロード後、自動的に文字起こしを開始します"
+                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください\n\nダウンロード後、自動的に文字起こしを開始します"
                 yield f"data: {json.dumps({'progress': 5, 'status': status_msg})}\n\n"
             else:
                 yield f"data: {json.dumps({'progress': 5, 'status': '音声認識モデル起動中...'})}\n\n"
@@ -1650,6 +1879,29 @@ async def delete_model_endpoint(model_name: str):
     if result["success"]:
         return JSONResponse(content=result)
     return JSONResponse(content=result, status_code=400)
+
+
+@app.get("/last-transcription")
+async def get_last_transcription():
+    """
+    直近の文字起こし結果を返す
+    """
+
+    exists = bool(last_transcription["text"])
+    timestamp = (
+        last_transcription["timestamp"].isoformat()
+        if last_transcription["timestamp"]
+        else None
+    )
+
+    return JSONResponse(
+        content={
+            "exists": exists,
+            "text": last_transcription["text"] if exists else "",
+            "processing_time": last_transcription["processing_time"],
+            "timestamp": timestamp,
+        }
+    )
 
 
 @app.post("/save-transcription")

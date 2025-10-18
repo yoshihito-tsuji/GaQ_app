@@ -11,95 +11,139 @@
 - **対応プラットフォーム**: macOS、Windows
 - **文字起こしエンジン**: faster-whisper
 
-## 🚨 **最優先課題 - pywebview環境での動作不良（2025-10-17更新）**
+## ✅ **Mac版v1.1.1 完全復旧完了！（2025-10-18更新）**
 
-### ❌ 未解決の重大問題
+### 🎉 解決済み - すべての機能が動作します
 
-Mac版v1.1.1において、pywebview環境特有の制約により以下の機能が動作しません：
+Mac版v1.1.1において、pywebview環境でのすべての課題が解決され、**実用可能な状態**になりました！
 
-1. **ファイル選択ができない** - ファイル選択エリアをクリックしてもダイアログが表示されない
-2. **モデル管理ボタンが反応しない** - 「モデル管理」ボタンのクリックイベントが発火しない
-3. **ドラッグ&ドロップが動作しない** - DataTransferオブジェクトへのアクセスが制限されている
+#### ✅ 動作確認済み機能
 
-### 🔄 2025-10-17の作業内容（問題未解決）
+1. **✅ ファイル選択** - クリックでファイル選択ダイアログが正常に動作
+2. **✅ ドラッグ&ドロップ** - ファイルをドラッグ&ドロップで選択可能（新機能！）
+3. **✅ 文字起こし実行** - Medium、Large-v3モデルで正常動作
+4. **✅ リアルタイム進捗表示** - プログレスバーが正しく更新
+5. **✅ 結果のコピー** - クリップボードへのコピーが確実に動作
+6. **✅ 結果の保存** - メタデータ（文字数・処理時間）付きで保存
+7. **✅ モデル選択** - モデル変更時のファイル再アップロードが正常動作
 
-以下の広範な修正を実装し、DMGをビルドしましたが、**ファイル選択機能は依然として動作しませんでした**：
+### 🔧 2025-10-18の主要改善内容
 
-#### 実装した修正
+#### 1. ドラッグ&ドロップ機能の実装
 
-1. **`/upload` エンドポイント追加** ([release/mac/src/main.py:1140-1178](release/mac/src/main.py#L1140))
-   - UploadFile を受け取り、file_id を返す仕組み
+**解決方法**: `text/uri-list` データ型からファイルパスを直接取得
 
-2. **JavaScript初期化タイミング調整** ([release/mac/src/main.py:1184-1214](release/mac/src/main.py#L1184))
-   - `initializeApp()` 関数にリファクタ
-   - `pywebviewready` イベント対応
-   - `safeInitialize()` でフォールバック機構追加
+```javascript
+uploadArea.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var uriList = e.dataTransfer.getData('text/uri-list');
+    if (uriList) {
+        var filePath = decodeURIComponent(uriList.replace('file://', '').trim());
+        uploadFileViaPywebview(filePath, fileName);
+    }
+});
+```
 
-3. **`Bridge.log_message()` メソッド追加** ([release/mac/src/main_app.py:174-202](release/mac/src/main_app.py#L174))
-   - JavaScriptログをPython側に転送
+**成果**:
 
-4. **コンソールログフック実装** ([release/mac/src/main_app.py:431-492](release/mac/src/main_app.py#L431))
-   - `window.evaluate_js` で console.log/error/warn をフック
+- ファイルをドラッグ&ドロップで選択できる
+- クリック選択との併用が可能
+- ユーザビリティが大幅に向上
 
-5. **`copyResult()` 関数のグローバル公開** ([release/mac/src/main.py:919-937](release/mac/src/main.py#L919))
-   - `window.copyResult` としてグローバルスコープに公開
+#### 2. Large-v3選択時のエラー解決
 
-6. **ドラッグ&ドロップ非対応の明示** ([release/mac/src/main.py:605-628](release/mac/src/main.py#L605))
-   - pywebview環境でのドロップ時にトースト通知で案内
+**問題**: モデル変更時に「ファイルが見つかりません」エラー
 
-#### 確認された問題点
+**解決方法**: ファイルパスを保持し、文字起こし前に常に再アップロード
 
-1. **`pywebviewready` イベントが発火していない**
-   - ログに `[JS] 📢 pywebviewready イベント検出` が出力されない
-   - `[JS] 🚀 initializeApp() 開始` も出力されない
-   - → JavaScript初期化が実行されていない可能性
+```javascript
+window.uploadedFilePath = filePath;
+if (window.uploadedFilePath) {
+    var reuploadResult = await window.pywebview.api.upload_audio_file(window.uploadedFilePath);
+    await startTranscriptionWithFileId(reuploadResult.file_id, fileName, model);
+}
+```
 
-2. **コンソールフックのみ動作**
-   - `[JS] ✅ Console hook installed` のみ確認できる
-   - 他のJavaScriptログが一切出力されない
+**成果**: モデル変更時も正しくファイルが処理される
 
-3. **ビルドしたDMGで問題再現**
-   - ファイル選択エリアをクリックしても無反応
-   - Web Inspectorで手動デバッグが必要だが、GUI操作の制約で実施困難
+#### 3. クリップボードコピーの完全実装
 
-### 📋 次回作業の推奨アプローチ
+**解決方法**: AppleScript + 一時ファイル方式
 
-#### 最優先: 初期化問題の解決
+```python
+# 一時ファイルに保存
+with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False) as tmp:
+    tmp.write(text)
 
-1. **`pywebviewready` イベントの代替**
-   - DOMContentLoadedで強制的に初期化
-   - タイマーベースのポーリングで `window.pywebview` の存在確認
-   - `window.evaluate_js` で直接 `initializeApp()` を呼び出す
+# AppleScriptで読み込んでクリップボードにセット
+applescript = '''
+set fileContents to read fileRef as «class utf8»
+set the clipboard to fileContents
+'''
+```
 
-2. **最小限のテストケース作成**
+**成果**: 長文でも確実にクリップボードにコピーできる
 
-   ```javascript
-   // 超シンプルなテスト: ボタンクリックでalert表示
-   document.getElementById('uploadArea').onclick = function() {
-       alert('Click detected!');
-   };
-   ```
+#### 4. 保存ファイルへのメタデータ追加
 
-3. **pywebview制約の回避策検討**
-   - Electron への移行を検討
-   - Tauri への移行を検討
-   - ネイティブGUIツールキット（tkinter、PySide6）への移行
+**実装内容**:
 
-#### 段階的デバッグ手順
+```text
+（文字起こし結果テキスト）
 
-1. **ログ出力の確認**
+---
+文字数：994文字
+処理時間：1分20秒
+```
 
-   ```bash
-   # アプリ起動後、ログファイルを監視
-   tail -f ~/.gaq/logs/app.log
-   ```
+**成果**: 保存ファイルに自動的に統計情報が追記される
 
-2. **Safari Web Inspectorでの検証**
-   - アプリ起動後、Safari → 開発 → [マシン名] → GaQ Offline Transcriber
-   - Console で `window.pywebview` の存在確認
-   - `typeof initializeApp` が `"function"` か確認
+#### 5. モデルダウンロードの改善
 
-3. **Bridge APIの直接テスト**
+**変更内容**:
+
+- 確認ダイアログを廃止（自動ダウンロード）
+- トースト通知で進捗表示
+- ダウンロード完了後、自動的に文字起こし開始
+
+**成果**: ユーザー操作が減り、スムーズな体験を提供
+
+### 📊 動作確認済み環境
+
+- **OS**: macOS 14.8 (arm64)
+- **Python**: 3.12.3
+- **pywebview**: 6.0
+- **PyInstaller**: 6.16.0
+- **モデル**: Medium, Large-v3
+
+### 📝 使い方
+
+1. **DMGをマウント**: `GaQ_Transcriber_v1.1.1_mac.dmg` をダブルクリック
+2. **アプリをインストール**: `GaQ Offline Transcriber.app` を Applications フォルダにドラッグ
+3. **アプリを起動**: Applications フォルダから起動
+4. **ファイルを選択**: クリックまたはドラッグ&ドロップ
+5. **文字起こし実行**: 「文字起こし開始」ボタンをクリック
+6. **結果を利用**: コピーまたは保存
+
+### 🔍 トラブルシューティング
+
+ログの確認:
+
+```bash
+tail -f ~/.gaq/logs/app.log
+```
+
+詳細は [docs/development/HISTORY.md](docs/development/HISTORY.md) を参照してください。
+
+---
+
+## 過去の問題（解決済み）
+
+### pywebview環境での動作不良（2025-10-17 → 2025-10-18で解決）
+
+以下の問題はすべて解決済みです：
+
+1. **Bridge APIの直接テスト**
 
    ```javascript
    // Console で実行

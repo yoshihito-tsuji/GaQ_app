@@ -17,7 +17,8 @@ echo ""
 
 # Python 3.12の確認
 echo "1. Pythonバージョン確認..."
-PYTHON_CMD="/opt/homebrew/bin/python3.12"
+# システムにインストールされているpython3.12を使用
+PYTHON_CMD=$(which python3.12 2>/dev/null || echo "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12")
 
 if [ ! -f "$PYTHON_CMD" ]; then
     echo -e "${RED}エラー: Python 3.12が見つかりません${NC}"

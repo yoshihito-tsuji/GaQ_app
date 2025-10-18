@@ -24,7 +24,7 @@ log() {
 # エラーハンドリング
 error_exit() {
     log "ERROR: $1"
-    osascript -e "display dialog \"エラーが発生しました:\n\n$1\n\n詳細はログファイルを確認してください:\n$LOG_FILE\" buttons {\"OK\"} default button 1 with icon stop with title \"GaQ Installer\""
+    osascript -e "display alert \"お知らせ\" message \"エラーが発生しました:\n\n$1\n\n詳細はログファイルを確認してください:\n$LOG_FILE\" as critical buttons {\"OK\"} default button \"OK\""
     exit 1
 }
 
@@ -68,7 +68,7 @@ main() {
         log "インストール完了"
 
         # 完了ダイアログ
-        osascript -e "display dialog \"GaQ Offline Transcriber のインストールが完了しました！\n\nブラウザが自動的に起動します。\n音声ファイルをドラッグ&ドロップして文字起こしを開始してください。\" buttons {\"OK\"} default button 1 with icon note with title \"GaQ Installer\""
+    osascript -e "display alert \"お知らせ\" message \"GaQ Offline Transcriber のインストールが完了しました！\n\nブラウザが自動的に起動します。\n音声ファイルをドラッグ&ドロップして文字起こしを開始してください。\" as informational buttons {\"OK\"} default button \"OK\""
 
         # GaQアプリを起動
         bash "$APP_DIR/run_gaq.sh" &

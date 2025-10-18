@@ -19,7 +19,16 @@
       "Bash(lsof:*)",
       "Bash(xargs kill:*)",
       "Bash(cat:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Read(//Users/yoshihitotsuji/.gaq/**)",
+      "Bash(git log:*)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(awk:*)",
+      "Read(//Users/yoshihitotsuji/Desktop/**)",
+      "Bash(bash:*)",
+      "Bash(open \"dist/GaQ Offline Transcriber.app\")",
+      "Bash(pip show:*)",
+      "Bash(open:*)"
     ],
     "deny": [],
     "ask": []

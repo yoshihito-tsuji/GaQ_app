@@ -26,9 +26,23 @@ from config import APP_VERSION
 LOCK_FILE = "/tmp/gaq_transcriber.lock"
 lock_file_handle = None
 
-# ログ設定
+# ログディレクトリ
+custom_log_dir = os.environ.get("GAQ_LOG_DIR")
+if custom_log_dir:
+    LOG_DIR = Path(custom_log_dir)
+else:
+    LOG_DIR = Path.home() / ".gaq" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "app.log"
+
+# ログ設定（ファイルとコンソールの両方に出力）
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -95,11 +109,7 @@ def show_already_running_dialog():
     try:
         # osascriptでダイアログ表示
         script = '''
-        display dialog "GaQ Offline Transcriber は既に起動しています。\\n\\n既存のウィンドウを確認してください。" ¬
-            with title "GaQ Offline Transcriber" ¬
-            buttons {"OK"} ¬
-            default button "OK" ¬
-            with icon caution
+        display alert "お知らせ" message "GaQ Offline Transcriber は既に起動しています。\\n\\n既存のウィンドウを確認してください。" as informational buttons {"OK"} default button "OK"
         '''
         subprocess.run(['osascript', '-e', script], check=False, timeout=5)
     except Exception as e:
@@ -201,9 +211,129 @@ class Bridge:
             logger.error(f"❌ log_message エラー: {e}", exc_info=True)
             return {"success": False}
 
+    def copy_to_clipboard(self, text: str):
+        """
+        文字列をクリップボードにコピー
+
+        Args:
+            text: コピーする文字列
+
+        Returns:
+            dict: {"success": bool, "message": str}
+        """
+        logger.info(f"🔔 [Bridge] copy_to_clipboard() が呼び出されました - text length: {len(text) if text else 0}")
+        try:
+            if not text:
+                logger.warning("⚠️ コピーするテキストが空です")
+                return {
+                    "success": False,
+                    "message": "コピーするテキストが空です"
+                }
+
+            # 方法: 一時ファイル経由でAppleScriptを使ってクリップボードにコピー
+            # 長いテキストをコマンドライン引数で渡すと制限を超えるため、
+            # 一時ファイルに書き込んでから、AppleScriptでファイルを読み込む
+
+            import tempfile
+            import os
+
+            # 一時ファイルを作成してテキストを書き込み
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.txt') as tmp:
+                tmp.write(text)
+                tmp_path = tmp.name
+
+            logger.info(f"📝 一時ファイル作成: {tmp_path} ({len(text)}文字)")
+
+            try:
+                # AppleScriptでファイルを読み込んでクリップボードにセット
+                applescript = f'''
+                set theFile to POSIX file "{tmp_path}"
+                set fileRef to open for access theFile
+                set fileContents to read fileRef as «class utf8»
+                close access fileRef
+                set the clipboard to fileContents
+                '''
+
+                logger.info(f"🍎 AppleScriptでクリップボードにセット中...")
+
+                result = subprocess.run(
+                    ['osascript', '-e', applescript],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+
+                if result.returncode != 0:
+                    logger.error(f"❌ AppleScript失敗: {result.stderr}")
+                    return {
+                        "success": False,
+                        "message": f"クリップボードへのコピーに失敗しました: {result.stderr}"
+                    }
+
+                logger.info(f"✅ AppleScriptでクリップボードにコピーしました ({len(text)}文字)")
+
+                # 検証: pbpasteで確認（エンコーディングエラーを回避）
+                time.sleep(0.1)  # クリップボード更新を待つ
+
+                try:
+                    # バイナリモードで取得してから、エンコーディングを試行
+                    verify_process = subprocess.Popen(
+                        ['pbpaste'],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    stdout_bytes, stderr_bytes = verify_process.communicate(timeout=5)
+
+                    if verify_process.returncode == 0:
+                        # UTF-8でデコードを試みる
+                        try:
+                            clipboard_text = stdout_bytes.decode('utf-8')
+                        except UnicodeDecodeError:
+                            # UTF-8で失敗したら、エラーを無視してデコード
+                            clipboard_text = stdout_bytes.decode('utf-8', errors='replace')
+                            logger.warning(f"⚠️ UTF-8デコードエラー - errors='replace'でデコードしました")
+
+                        if clipboard_text == text:
+                            logger.info(f"✅ クリップボード内容検証成功 ({len(clipboard_text)}文字)")
+                        else:
+                            logger.warning(f"⚠️ クリップボード内容が一致しません (expected: {len(text)}, actual: {len(clipboard_text)})")
+                            logger.info(f"Expected first 50 chars: {repr(text[:50])}")
+                            logger.info(f"Actual first 50 chars: {repr(clipboard_text[:50])}")
+                    else:
+                        stderr_text = stderr_bytes.decode('utf-8', errors='replace')
+                        logger.warning(f"⚠️ pbpasteでの検証失敗: {stderr_text}")
+
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"⚠️ pbpaste検証タイムアウト")
+                except Exception as e:
+                    logger.warning(f"⚠️ pbpaste検証エラー: {e}")
+
+                return {
+                    "success": True,
+                    "message": "クリップボードにコピーしました"
+                }
+
+            finally:
+                # 一時ファイルを削除
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                    logger.debug(f"🗑️ 一時ファイル削除: {tmp_path}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ クリップボードコピーエラー: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": "クリップボードへのコピーに失敗しました"
+            }
+        except Exception as e:
+            logger.error(f"❌ クリップボードコピーエラー: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"クリップボードへのコピーに失敗しました: {str(e)}"
+            }
+
     def save_transcription(self):
         """
-        文字起こし結果をファイルに保存
+        文字起こし結果をファイルに保存（メタ情報付き）
 
         Returns:
             dict: {"success": bool, "message": str, "path": str|null}
@@ -221,7 +351,6 @@ class Bridge:
 
             data = response.json()
             text = data.get("text", "")
-
             if not text:
                 return {
                     "success": False,
@@ -229,11 +358,29 @@ class Bridge:
                     "path": None
                 }
 
+            # メタ情報を取得
+            char_count = len(text)
+            processing_time = data.get("processing_time", 0.0)  # 秒単位
+
+            # 処理時間のフォーマット（60秒以上なら「mm分ss秒」、未満なら「○○.○秒」）
+            if processing_time >= 60:
+                minutes = int(processing_time // 60)
+                seconds = int(processing_time % 60)
+                time_str = f"{minutes}分{seconds}秒"
+            else:
+                time_str = f"{processing_time:.1f}秒"
+
+            timestamp_str = data.get("timestamp") or datetime.now().isoformat()
+            try:
+                timestamp_dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            except ValueError:
+                timestamp_dt = datetime.now()
+
             # ファイル保存ダイアログを表示
             file_types = ('Text Files (*.txt)', )
             save_path = webview.windows[0].create_file_dialog(
                 webview.SAVE_DIALOG,
-                save_filename=f'transcription_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt',
+                save_filename=f'transcription_{timestamp_dt.strftime("%Y%m%d_%H%M%S")}.txt',
                 file_types=file_types
             )
 
@@ -246,11 +393,14 @@ class Bridge:
                     "cancelled": True
                 }
 
+            # メタ情報を末尾に追記
+            text_with_meta = f"{text}\n\n---\n文字数：{char_count}文字\n処理時間：{time_str}\n"
+
             # ファイルに書き込み
             with open(save_path, 'w', encoding='utf-8') as f:
-                f.write(text)
+                f.write(text_with_meta)
 
-            logger.info(f"📥 文字起こし結果保存: {save_path} ({len(text)}文字)")
+            logger.info(f"📥 文字起こし結果保存: {save_path} ({char_count}文字, {time_str})")
 
             return {
                 "success": True,
@@ -273,6 +423,7 @@ class Bridge:
         Returns:
             dict: {"success": bool, "path": str|None, "name": str|None, "cancelled": bool|None}
         """
+        logger.info("🔔 [Bridge] select_audio_file() が呼び出されました")
         try:
             # ファイル選択ダイアログを表示
             file_types = (
@@ -341,6 +492,7 @@ class Bridge:
         Returns:
             dict: {"success": bool, "file_id": str|None, "message": str}
         """
+        logger.info(f"🔔 [Bridge] upload_audio_file() が呼び出されました - file_path: {file_path}")
         try:
             # ファイルの存在確認
             if not os.path.exists(file_path):
@@ -433,71 +585,139 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         js_api=bridge,  # JSブリッジを登録
     )
 
-    def setup_console_hook():
+    def log_pywebview_state(event_name: str):
         """
-        コンソールログをPython側にブリッジするJSコードを注入
+        window.pywebview / window.pywebview.api の存在をログに出力する
         """
         try:
-            # console.log/error/warn をフックしてPython側に転送
-            hook_script = """
-            (function() {
-                // オリジナルのconsoleメソッドを保存
-                var originalLog = console.log;
-                var originalError = console.error;
-                var originalWarn = console.warn;
+            result = window.evaluate_js(
+                """
+                (function() {
+                    var hasPywebview = typeof window.pywebview !== 'undefined';
+                    var hasApi = hasPywebview && !!window.pywebview.api;
+                    var apiKeys = hasApi ? Object.keys(window.pywebview.api) : [];
+                    return JSON.stringify({
+                        hasPywebview: hasPywebview,
+                        hasApi: hasApi,
+                        apiKeys: apiKeys
+                    });
+                })();
+                """
+            )
+            if isinstance(result, str):
+                logger.info(f"🔍 [{event_name}] pywebview状態: {result}")
+            else:
+                logger.info(f"🔍 [{event_name}] pywebview状態(raw): {result}")
+        except Exception as exc:
+            logger.error(f"❌ [{event_name}] pywebview確認エラー: {exc}", exc_info=True)
 
-                // console.log をフック
-                console.log = function() {
-                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
-                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-                    }).join(' ');
+    window.events.loaded += lambda: log_pywebview_state("loaded")
+    window.events.shown += lambda: log_pywebview_state("shown")
 
-                    originalLog.apply(console, arguments);
+    # ★コンソールフックは main.py の <script> タグ内に直接埋め込み済み
+    # （以前は window.events.loaded で注入していたが、タイミングが遅すぎたため変更）
+    # def setup_console_hook():
+    #     """
+    #     コンソールログをPython側にブリッジするJSコードを注入
+    #     """
+    #     ...
+    # window.events.loaded += setup_console_hook
 
-                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
-                        window.pywebview.api.log_message('info', message);
-                    }
-                };
+    # ドラッグ&ドロップイベントハンドラーの登録
+    def setup_drag_drop_handler():
+        """
+        pywebview DOM APIを使ってドラッグ&ドロップイベントを登録
+        """
+        try:
+            from webview.dom import DOMEventHandler
 
-                // console.error をフック
-                console.error = function() {
-                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
-                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-                    }).join(' ');
+            def on_drop(e):
+                """
+                ドロップイベントハンドラー
+                pywebviewFullPathを取得してJavaScriptに通知
+                """
+                try:
+                    logger.info("📥 [DragDrop] ドロップイベント発生")
+                    files = e.get('dataTransfer', {}).get('files', [])
 
-                    originalError.apply(console, arguments);
+                    if not files:
+                        logger.warning("⚠️ [DragDrop] ドロップされたファイルがありません")
+                        return
 
-                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
-                        window.pywebview.api.log_message('error', message);
-                    }
-                };
+                    # 最初のファイルのパスを取得
+                    first_file = files[0]
+                    file_path = first_file.get('pywebviewFullPath')
+                    file_name = first_file.get('name', 'unknown')
 
-                // console.warn をフック
-                console.warn = function() {
-                    var message = Array.prototype.slice.call(arguments).map(function(arg) {
-                        return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-                    }).join(' ');
+                    logger.info(f"📂 [DragDrop] ファイルドロップ: {file_name} ({file_path})")
 
-                    originalWarn.apply(console, arguments);
+                    if not file_path:
+                        logger.error("❌ [DragDrop] pywebviewFullPathが取得できませんでした")
+                        return
 
-                    if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
-                        window.pywebview.api.log_message('warning', message);
-                    }
-                };
+                    # JavaScriptにファイルパスを通知
+                    # window.__droppedFilePathにセットして、JavaScriptイベントを発火
+                    js_code = f'''
+                    (function() {{
+                        window.__droppedFilePath = {json.dumps(file_path)};
+                        window.__droppedFileName = {json.dumps(file_name)};
+                        var event = new CustomEvent('pywebviewFileDrop', {{
+                            detail: {{
+                                path: {json.dumps(file_path)},
+                                name: {json.dumps(file_name)}
+                            }}
+                        }});
+                        window.dispatchEvent(event);
+                        console.log('🎯 [DragDrop] pywebviewFileDrop イベント発火:', {json.dumps(file_name)});
+                    }})();
+                    '''
+                    window.evaluate_js(js_code)
+                    logger.info(f"✅ [DragDrop] JavaScript通知完了: {file_name}")
 
-                console.log('✅ Console hook installed - JS logs will be forwarded to Python');
-            })();
-            """
-            window.evaluate_js(hook_script)
-            logger.info("✅ コンソールログフック設定完了")
+                except Exception as ex:
+                    logger.error(f"❌ [DragDrop] ドロップ処理エラー: {ex}", exc_info=True)
+
+            # dragoverイベントのハンドラー（dropを許可するために必須）
+            def on_dragover(e):
+                """
+                dragoverイベントでprevent_defaultしないとdropイベントが発火しない
+                """
+                # ログは大量になるので出力しない
+                pass
+
+            # イベントをバインドする DOM 要素を取得
+            try:
+                upload_area = window.dom.get_element('#uploadArea')
+                logger.info("✅ [DragDrop] uploadArea要素の取得に成功")
+            except Exception as lookup_error:
+                upload_area = None
+                logger.error(f"❌ [DragDrop] uploadArea取得エラー: {lookup_error}", exc_info=True)
+
+            if upload_area is None:
+                logger.error("❌ [DragDrop] uploadArea要素を取得できなかったため、ドラッグ&ドロップを無効化します")
+                return
+
+            # dragoverとdropイベントにハンドラーを登録
+            # dragoverでpreventDefaultしないとdropイベントが発火しない
+            upload_area.events.dragover += DOMEventHandler(on_dragover, prevent_default=True, stop_propagation=False)
+            upload_area.events.drop += DOMEventHandler(on_drop, prevent_default=True, stop_propagation=True)
+
+            logger.info("✅ [DragDrop] ドロップイベントハンドラー登録完了（dragover + drop）")
+
         except Exception as e:
-            logger.error(f"❌ コンソールログフック設定エラー: {e}", exc_info=True)
+            logger.error(f"❌ [DragDrop] ハンドラー登録エラー: {e}", exc_info=True)
 
-    # Webview起動後にコンソールフックを設定
-    window.events.loaded += setup_console_hook
+    # loadedイベント後にドラッグ&ドロップハンドラーを設定
+    window.events.loaded += setup_drag_drop_handler
 
     # Webviewを起動（メインスレッド）
-    webview.start(debug=False)
+    webview_debug = os.environ.get("GAQ_WEBVIEW_DEBUG", "0") == "1"
+    private_mode_env = os.environ.get("GAQ_WEBVIEW_PRIVATE")
+    if private_mode_env is None:
+        webview_private_mode = False
+    else:
+        webview_private_mode = private_mode_env.lower() not in {"0", "false", "no"}
+    webview.start(debug=webview_debug, private_mode=webview_private_mode)
 
 
 def main():
@@ -514,8 +734,14 @@ def main():
         sys.exit(0)
 
     # macOS の multiprocessing 対応
+    # PyInstallerビルド時の multiprocessing による再実行を防ぐため、
+    # set_start_method は一度だけ実行されるようにする
     if sys.platform == "darwin":
-        multiprocessing.set_start_method("spawn", force=True)
+        try:
+            multiprocessing.set_start_method("spawn", force=False)
+        except RuntimeError:
+            # 既に設定済みの場合は何もしない
+            pass
 
     # FastAPIサーバーを別スレッドで起動
     server_thread = threading.Thread(
@@ -530,4 +756,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # PyInstallerビルド時のmultiprocessing対策
+    # freeze_support()を呼び出すことで、子プロセスが正しく動作する
+    multiprocessing.freeze_support()
     main()
