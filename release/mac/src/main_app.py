@@ -361,6 +361,15 @@ class Bridge:
             # メタ情報を取得
             char_count = len(text)
             processing_time = data.get("processing_time", 0.0)  # 秒単位
+            model_name = data.get("model", "")  # モデル名
+
+            # モデル名の表示形式を整形
+            if model_name == "medium":
+                model_display = "Medium"
+            elif model_name == "large-v3":
+                model_display = "Large-v3"
+            else:
+                model_display = model_name or "不明"
 
             # 処理時間のフォーマット（60秒以上なら「mm分ss秒」、未満なら「○○.○秒」）
             if processing_time >= 60:
@@ -394,7 +403,7 @@ class Bridge:
                 }
 
             # メタ情報を末尾に追記
-            text_with_meta = f"{text}\n\n---\n文字数：{char_count}文字\n処理時間：{time_str}\n"
+            text_with_meta = f"{text}\n\n---\n文字数：{char_count}文字\n処理時間：{time_str}\n音声認識モデル：{model_display}\n"
 
             # ファイルに書き込み
             with open(save_path, 'w', encoding='utf-8') as f:
@@ -558,7 +567,13 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         host: ホスト名
         port: ポート番号
     """
-    url = f"http://{host}:{port}"
+    # テストモード確認（環境変数 GAQ_TEST_MODE=1 で /test ページを開く）
+    test_mode = os.environ.get("GAQ_TEST_MODE", "0") == "1"
+    if test_mode:
+        url = f"http://{host}:{port}/test"
+        logger.info("🧪 [TEST MODE] テストページを起動します: /test")
+    else:
+        url = f"http://{host}:{port}"
 
     # サーバー起動を待機
     if not is_server_ready(host, port):

@@ -528,13 +528,163 @@ pyinstaller GaQ_Transcriber.spec
 
 このプロジェクトは公立はこだて未来大学 辻研究室によって開発されています。
 
+## トラブルシューティング
+
+### 🚨 アプリが起動しない場合
+
+#### 症状
+- DMGからインストール後、アプリをダブルクリックしても起動しない
+- アプリアイコンがDockに一瞬表示されてすぐ消える
+
+#### 確認手順
+
+**1. ログファイルを確認**
+
+```bash
+cat ~/.gaq/logs/app.log
+```
+
+ログに以下のようなエラーが表示されていないか確認：
+- `ImportError: cannot import name 'XXX'` → モジュール欠損
+- `Permission denied` → 実行権限の問題
+- `Address already in use` → ポート競合（既に起動中の可能性）
+
+**2. 既存インスタンスの確認**
+
+別のGaQ Transcriber が既に起動している可能性があります：
+
+```bash
+# プロセス確認
+ps aux | grep GaQ_Transcriber
+
+# 既存プロセスを終了
+pkill -f "GaQ_Transcriber"
+```
+
+**3. 再インストール**
+
+1. アプリを完全にアンインストール
+   ```bash
+   rm -rf "/Applications/GaQ Offline Transcriber.app"
+   ```
+
+2. DMGを再マウントしてインストール
+
+**4. ターミナルから直接起動（詳細ログ確認）**
+
+```bash
+"/Applications/GaQ Offline Transcriber.app/Contents/MacOS/GaQ_Transcriber"
+```
+
+エラーメッセージが表示される場合は、その内容を確認してください。
+
+---
+
+### 🖱️ 画面が動作しない場合（UI無反応）
+
+#### 症状
+- アプリは起動するが、ボタンをクリックしても反応しない
+- ドラッグ&ドロップが動作しない
+- すべてのUI要素が無反応
+
+#### 原因
+JavaScriptの初期化エラーの可能性があります。
+
+#### 確認手順
+
+**1. JavaScriptログの確認**
+
+```bash
+tail -50 ~/.gaq/logs/app.log | grep "\[JS\]"
+```
+
+**期待される正常なログ**:
+```
+[JS] ✅ Console hook installed
+[JS] ✅ カスタムダイアログAPI登録完了
+[JS] ✅ グローバルエラーハンドラー登録完了
+[JS] ===== GaQ JavaScript starting =====
+[JS] ✅ initializeApp() 完了
+```
+
+**JavaScriptログが全く表示されない場合** → JavaScript初期化失敗
+
+**2. エラーログの確認**
+
+```bash
+tail -50 ~/.gaq/logs/app.log | grep -i error
+```
+
+以下のようなエラーが表示される場合：
+- `SyntaxError` → JavaScriptコード構文エラー
+- `ReferenceError: XXX is not defined` → 未定義の関数/変数参照
+- `🚨 [Global Error]` → JavaScript実行時エラー
+
+**3. Safari検証（開発者向け）**
+
+アプリを一度起動して、生成されたHTMLをSafariで開いて検証：
+
+```bash
+# アプリを起動（すぐ終了してOK）
+open "/Applications/GaQ Offline Transcriber.app"
+
+# Safariで検証
+open -a Safari /tmp/gaq_debug.html
+```
+
+Safari の開発メニュー → JavaScriptコンソール でエラーを確認。
+
+**4. テストモードでの検証（開発者向け）**
+
+極小テストページで JavaScript 実行を検証：
+
+```bash
+cd /path/to/GaQ_app/release/mac
+export GAQ_TEST_MODE=1
+export GAQ_WEBVIEW_DEBUG=1
+bash test_javascript.sh
+```
+
+Alert が表示される → JavaScript は動作可能
+Alert が表示されない → JavaScript 実行環境の問題
+
+#### 対処方法
+
+**一時的な回避策**:
+1. アプリを完全終了
+2. `~/.gaq/logs/app.log` を削除
+3. アプリを再起動
+
+**それでも解決しない場合**:
+- 開発ログ `docs/development/` で類似問題を検索
+- GitHubのIssueで報告（ログファイルを添付）
+
+---
+
+### 📝 その他の問題
+
+#### モデルのダウンロードが進まない
+- インターネット接続を確認
+- `~/.cache/huggingface/` の容量を確認（Large-v3は約3GB必要）
+
+#### 文字起こし結果が不正確
+- より高精度なモデル（Large-v3）を選択
+- 音声ファイルの品質を確認（ノイズが多いと精度低下）
+
+#### クリップボードコピーができない
+- macOS のセキュリティ設定を確認
+- システム環境設定 → セキュリティとプライバシー → アクセシビリティ
+
+---
+
 ## 連絡先
 
 - **Website**: https://tsuji-lab.net
 - **開発元**: 公立はこだて未来大学 辻研究室
+- **問題報告**: GitHub Issues
 
 ---
 
-**最終更新**: 2025-10-16
+**最終更新**: 2025-10-19
 **バージョン**: Mac v1.1.1 / Windows v1.1.0
 **ステータス**: リリース済み

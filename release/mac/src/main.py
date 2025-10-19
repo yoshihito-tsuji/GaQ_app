@@ -46,7 +46,7 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # グローバル変数：最後の文字起こし結果を保存
-last_transcription = {"text": "", "processing_time": 0, "timestamp": None}
+last_transcription = {"text": "", "processing_time": 0, "timestamp": None, "model": ""}
 
 
 def cleanup_file(file_path: Path):
@@ -212,6 +212,27 @@ async def root():
                 color: white;
                 font-weight: bold;
                 font-size: 14px;
+                position: relative;
+                overflow: hidden;
+            }
+            .progress-bar-fill::after {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(
+                    90deg,
+                    rgba(255, 255, 255, 0) 0%,
+                    rgba(255, 255, 255, 0.3) 50%,
+                    rgba(255, 255, 255, 0) 100%
+                );
+                animation: shimmer 3.5s infinite;
+            }
+            @keyframes shimmer {
+                0% { left: -100%; }
+                100% { left: 100%; }
             }
             .progress-status {
                 margin-top: 10px;
@@ -426,6 +447,70 @@ async def root():
                 opacity: 1;
                 transform: translateY(0);
             }
+            /* カスタム確認ダイアログ */
+            #confirmDialog {
+                display: none;
+                position: fixed;
+                z-index: 10001;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+            }
+            .confirm-content {
+                background: white;
+                margin: 15% auto;
+                padding: 0;
+                border-radius: 12px;
+                width: 90%;
+                max-width: 400px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            }
+            .confirm-header {
+                background: #7ab55c;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 12px 12px 0 0;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            .confirm-body {
+                padding: 20px;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #333;
+            }
+            .confirm-footer {
+                padding: 15px 20px;
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                border-top: 1px solid #e0e0e0;
+            }
+            .confirm-btn {
+                padding: 10px 20px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: bold;
+                transition: background 0.2s;
+            }
+            .confirm-btn-cancel {
+                background: #f0f0f0;
+                color: #666;
+            }
+            .confirm-btn-cancel:hover {
+                background: #e0e0e0;
+            }
+            .confirm-btn-ok {
+                background: #e74c3c;
+                color: white;
+            }
+            .confirm-btn-ok:hover {
+                background: #d32f2f;
+            }
         </style>
     </head>
     <body>
@@ -490,7 +575,7 @@ async def root():
         </div>
 
         <script>
-            // ★コンソールフックを最優先で設定（<script>タグの最初）
+            // ★コンソールフックを最優先で設定
             (function() {
                 // オリジナルのconsoleメソッドを保存
                 var originalLog = console.log;
@@ -538,6 +623,49 @@ async def root():
 
                 console.log('✅ Console hook installed inline - JS logs will be forwarded to Python');
             })();
+
+            // ★カスタム確認ダイアログAPI - グローバルに公開（initializeApp定義前に必須）
+            var confirmCallback = null;
+
+            window.showConfirmDialog = function(message, callback) {
+                console.log('🔔 showConfirmDialog() 呼び出し:', message);
+                document.getElementById('confirmMessage').textContent = message;
+                document.getElementById('confirmDialog').style.display = 'block';
+                confirmCallback = callback;
+            };
+
+            window.closeConfirmDialog = function(result) {
+                console.log('🔔 closeConfirmDialog() 呼び出し:', result);
+                document.getElementById('confirmDialog').style.display = 'none';
+                if (confirmCallback) {
+                    confirmCallback(result);
+                    confirmCallback = null;
+                }
+            };
+
+            console.log('✅ カスタムダイアログAPI登録完了');
+
+            // ★グローバルエラーハンドラー - 未捕捉例外をPythonログへ転送
+            window.addEventListener('error', function(event) {
+                var errorMsg = '🚨 [Global Error] ' + event.message + ' at ' + event.filename + ':' + event.lineno + ':' + event.colno;
+                console.error(errorMsg);
+                console.error('Stack:', event.error ? event.error.stack : 'N/A');
+
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                    window.pywebview.api.log_message('error', errorMsg + ' | Stack: ' + (event.error ? event.error.stack : 'N/A'));
+                }
+            });
+
+            window.addEventListener('unhandledrejection', function(event) {
+                var errorMsg = '🚨 [Unhandled Promise Rejection] ' + event.reason;
+                console.error(errorMsg);
+
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.log_message) {
+                    window.pywebview.api.log_message('error', errorMsg);
+                }
+            });
+
+            console.log('✅ グローバルエラーハンドラー登録完了');
 
             console.log('===== GaQ JavaScript starting =====');
             console.log('document.readyState:', document.readyState);
@@ -1196,18 +1324,12 @@ async def root():
                         console.log('Model data:', data);
                         if (!data.exists) {
                             // モデルが未ダウンロード
-                            console.log('Model NOT exists - showing dialog');
-                            var message = 'モデル「' + modelName + '」は未ダウンロードです。\\n' +
-                                         'サイズ: 約' + data.size_gb + 'GB\\n\\n' +
-                                         '初回使用時に自動でダウンロードされます（数分かかります）。\\n' +
-                                         '続行しますか？';
-
-                            if (!confirm(message)) {
-                                // キャンセルされた場合、mediumに戻す
-                                modelSelect.value = 'medium';
-                            }
+                            console.log('Model NOT exists - showing notification');
+                            // トースト通知で案内（確認ダイアログは廃止）
+                            showToast('モデル「' + modelName + '」をダウンロードします（約' + data.size_gb + 'GB）', 4000);
+                            showToast('しばらくお待ちください...', 3000);
                         } else {
-                            console.log('Model exists - no dialog shown');
+                            console.log('Model exists - no notification shown');
                         }
                     })
                     .catch(function(error) {
@@ -1321,25 +1443,35 @@ async def root():
 
                 // モデルを削除
                 function deleteModel(modelName) {
-                    if (!confirm('モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。')) {
+                    // ★未定義ガード: showConfirmDialogが利用可能か確認
+                    if (typeof window.showConfirmDialog !== 'function') {
+                        console.error('❌ showConfirmDialog is not defined - カスタムダイアログAPIが未登録です');
+                        alert('モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。');
                         return;
                     }
 
-                    fetch('/models/' + modelName, {
-                        method: 'DELETE'
-                    })
-                    .then(function(response) { return response.json(); })
-                    .then(function(data) {
-                        if (data.success) {
-                            alert(data.message);
-                            loadModels();  // 一覧を再読み込み
-                        } else {
-                            alert('エラー: ' + data.message);
+                    var message = 'モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。';
+                    showConfirmDialog(message, function(confirmed) {
+                        if (!confirmed) {
+                            return;
                         }
-                    })
-                    .catch(function(error) {
-                        console.error('削除エラー:', error);
-                        alert('削除に失敗しました');
+
+                        fetch('/models/' + modelName, {
+                            method: 'DELETE'
+                        })
+                        .then(function(response) { return response.json(); })
+                        .then(function(data) {
+                            if (data.success) {
+                                showToast(data.message);
+                                loadModels();  // 一覧を再読み込み
+                            } else {
+                                showToast('エラー: ' + data.message);
+                            }
+                        })
+                        .catch(function(error) {
+                            console.error('削除エラー:', error);
+                            showToast('削除に失敗しました');
+                        });
                     });
                 }
 
@@ -1457,11 +1589,96 @@ async def root():
                 }
             }, 3000);
         </script>
+
+        <!-- カスタム確認ダイアログ -->
+        <div id="confirmDialog">
+            <div class="confirm-content">
+                <div class="confirm-header">お知らせ</div>
+                <div class="confirm-body" id="confirmMessage"></div>
+                <div class="confirm-footer">
+                    <button class="confirm-btn confirm-btn-cancel" onclick="closeConfirmDialog(false)">キャンセル</button>
+                    <button class="confirm-btn confirm-btn-ok" onclick="closeConfirmDialog(true)">OK</button>
+                </div>
+            </div>
+        </div>
     </body>
     </html>
     """)
     html_content = html_template.substitute(version=APP_VERSION)
     return HTMLResponse(content=html_content)
+
+
+@app.get("/test", response_class=HTMLResponse)
+async def test_minimal():
+    """極小テストページ - JavaScript実行検証用"""
+    logger.info("🧪 [TEST] /test エンドポイントが呼ばれました")
+
+    test_html = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal JavaScript Test</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        #output {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 5px;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Minimal JavaScript Test</h1>
+    <div id="output">JavaScript未実行</div>
+
+    <script>
+        // ステップ1: alert
+        alert('🎉 Alert works! JavaScript is executing.');
+
+        // ステップ2: console.log
+        console.log('✅ Console.log works!');
+        console.log('Current time:', new Date().toISOString());
+
+        // ステップ3: DOM操作
+        var output = document.getElementById('output');
+        output.className = 'success';
+        output.innerHTML = '✅ JavaScript executed successfully!<br>' +
+                          'Time: ' + new Date().toISOString() + '<br>' +
+                          'User Agent: ' + navigator.userAgent;
+
+        // ステップ4: pywebview API確認
+        console.log('window.pywebview exists:', !!window.pywebview);
+        if (window.pywebview) {
+            console.log('window.pywebview.api:', window.pywebview.api);
+            if (window.pywebview.api && window.pywebview.api.log_message) {
+                window.pywebview.api.log_message('info', '🧪 [TEST] pywebview API is available!');
+            }
+        }
+
+        // ステップ5: 追加のデバッグ情報表示
+        var debugInfo = document.createElement('div');
+        debugInfo.style.cssText = 'margin-top:20px; padding:10px; background:#ffffcc; border:1px solid #999;';
+        debugInfo.innerHTML = '<strong>Debug Info:</strong><br>' +
+                             'window.pywebview: ' + (window.pywebview ? 'YES' : 'NO') + '<br>' +
+                             'document.readyState: ' + document.readyState;
+        document.body.appendChild(debugInfo);
+    </script>
+</body>
+</html>"""
+
+    logger.info("🧪 [TEST] テストHTML生成完了")
+    return HTMLResponse(content=test_html)
 
 
 @app.post("/upload")
@@ -1718,6 +1935,7 @@ async def transcribe_stream(
                 last_transcription["text"] = result.get("text", "")
                 last_transcription["processing_time"] = result.get("duration", 0)
                 last_transcription["timestamp"] = datetime.now()
+                last_transcription["model"] = model
 
                 # 完了
                 yield f"data: {json.dumps({'progress': 100, 'status': '完了', 'result': result})}\n\n"
@@ -1839,6 +2057,7 @@ async def transcribe_stream_by_id(
                 last_transcription["text"] = result.get("text", "")
                 last_transcription["processing_time"] = result.get("duration", 0)
                 last_transcription["timestamp"] = datetime.now()
+                last_transcription["model"] = model
 
                 # 完了
                 yield f"data: {json.dumps({'progress': 100, 'status': '完了', 'result': result})}\n\n"
@@ -1900,6 +2119,7 @@ async def get_last_transcription():
             "text": last_transcription["text"] if exists else "",
             "processing_time": last_transcription["processing_time"],
             "timestamp": timestamp,
+            "model": last_transcription["model"],
         }
     )
 

@@ -1,5 +1,136 @@
 # GaQ Offline Transcriber - 開発履歴
 
+## 2025-10-19: JavaScript完全停止問題の解決（緊急対応）
+
+### 問題概要
+- **発生日時**: 2025-10-16 15:30 ビルド以降
+- **症状**: アプリは起動するが、すべてのJavaScriptが実行されず、UI完全無反応
+  - ドラッグ&ドロップ不可
+  - すべてのボタン無反応
+  - モデル管理機能停止
+  - コンソールログ出力なし
+- **影響**: アプリケーション全機能停止
+- **ステータス**: ✅ 解決完了
+
+### 根本原因
+
+**Python triple-quoted stringでの`\n`エスケープ問題**
+
+[release/mac/src/main.py:1462, 1466](../../release/mac/src/main.py#L1462)において、JavaScript内のalert文字列で改行を表現する際に、Pythonの`\n`がそのまま**literal newline**として出力されていた：
+
+```python
+# ❌ 問題のコード（Pythonトリプルクォート内）
+alert('モデル「' + modelName + '」を削除しますか？\n\n削除後は再度ダウンロードが必要です。');
+# → 生成されたJavaScriptに実際の改行が含まれ、SyntaxErrorが発生
+```
+
+JavaScriptのシングルクォート文字列内では**literal newlineは許可されない**ため、`SyntaxError: Unexpected EOF`が発生し、スクリプト全体の実行が停止していた。
+
+### 解決方法
+
+**バックスラッシュのエスケープ**
+
+```python
+# ✅ 修正後のコード
+alert('モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。');
+# → Pythonで \\n と書くことで、生成されたJavaScriptには \n が出力される
+```
+
+### 問題発見の経緯
+
+#### Phase 1: 誤った仮説（スコープ問題）
+- 初期仮説: `showConfirmDialog` が未定義
+- 対応: 関数をグローバルスコープに移動、`window.*`バインディング
+- 結果: **改善なし**
+
+#### Phase 2: pywebview環境問題の疑い
+- 仮説: pywebviewのJavaScript実行環境の問題
+- 対応: デバッグメッセージ追加、テストインフラ構築
+- 結果: **改善なし**
+
+#### Phase 3: Safari検証による突破口（Codex助言）
+- **Codexの指示**: 「まずSafariブラウザで検証すること」
+- 実施: `/tmp/gaq_debug.html` をSafariで開く
+- 発見: **JavaScriptコンソールに `SyntaxError: Unexpected EOF at line 1397`**
+- 結果: **根本原因特定** 🎯
+
+### 実装した修正と改善
+
+#### 1. 緊急修正
+- **main.py L1462, L1466**: `\n` → `\\n` に修正
+
+#### 2. 恒久的な改善
+- **グローバルエラーハンドラー追加** ([main.py:661-679](../../release/mac/src/main.py#L661)):
+  ```javascript
+  window.addEventListener('error', function(event) { ... });
+  window.addEventListener('unhandledrejection', function(event) { ... });
+  ```
+- **テストインフラ整備**:
+  - `/test` エンドポイント追加（極小JavaScript検証ページ）
+  - `test_javascript.sh` スクリプト作成
+  - `GAQ_TEST_MODE=1` 環境変数によるテストモード起動
+
+#### 3. ドキュメント整備
+- **README.md トラブルシューティングセクション追加** ([README.md:531-677](../../README.md#L531)):
+  - 🚨 アプリが起動しない場合
+  - 🖱️ 画面が動作しない場合（UI無反応）
+  - 📝 その他の問題
+- **Codex情報共有ドキュメント作成**: [codex_report_20251019.md](../../codex_report_20251019.md)
+- **開発ログ更新**: [20251019_smoke_test_and_sync_check.md](development/20251019_smoke_test_and_sync_check.md)
+
+### 教訓
+
+#### ✅ 効果的だった手法
+1. **Safari検証の最優先実施**
+   - pywebviewの問題切り分けにはブラウザ検証が最速
+   - JavaScriptコンソールでのエラー確認が決定打
+
+2. **生成されたHTMLの直接確認**
+   - Pythonソースと生成結果の比較
+   - `/tmp/gaq_debug.html` の保存による検証可能性
+
+3. **段階的なデバッグインフラ構築**
+   - テストモード、極小ページ、詳細ログ
+
+#### ❌ 時間を浪費した手法
+1. pywebview固有の問題と思い込んだ（約4時間）
+2. 複雑な仮説から検証開始（単純な構文エラーの可能性を軽視）
+3. ログ出力だけに依存（ブラウザツールを後回し）
+
+#### 📌 今後のベストプラクティス
+- **JavaScript問題発生時の確認順序**:
+  1. Safari + JavaScript Console（最優先）
+  2. 生成HTMLの構文チェック
+  3. pywebview特有の問題調査
+  4. 複雑なデバッグ実装
+
+### 成果物
+
+**v1.1.1 最終ビルド** (2025-10-19 20:14):
+- ファイル名: `GaQ_Transcriber_v1.1.1_mac.dmg`
+- サイズ: 78MB
+- 内容:
+  - JavaScript構文エラー修正済み
+  - デバッグメッセージ削除（プロダクションクリーン）
+  - グローバルエラーハンドラー実装
+  - テストインフラ保持
+- 動作確認: ✅ すべての機能正常動作
+
+### 関連ファイル
+
+**修正**:
+- [release/mac/src/main.py](../../release/mac/src/main.py) - JavaScript文字列エスケープ修正
+
+**ドキュメント**:
+- [README.md](../../README.md) - トラブルシューティング追加
+- [codex_report_20251019.md](../../codex_report_20251019.md) - 問題分析レポート
+- [docs/development/20251019_smoke_test_and_sync_check.md](development/20251019_smoke_test_and_sync_check.md) - 詳細調査ログ
+
+**テストツール**:
+- [release/mac/test_javascript.sh](../../release/mac/test_javascript.sh) - JavaScript実行検証スクリプト
+
+---
+
 ## 2025-10-16: Mac版 v1.1.1 リリース（パッチリリース）
 
 ### リリース概要
