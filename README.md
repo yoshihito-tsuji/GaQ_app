@@ -677,6 +677,79 @@ Alert が表示されない → JavaScript 実行環境の問題
 
 ---
 
+## 開発者向けトラブルシューティング
+
+### JavaScript実行エラーの診断フロー
+
+詳細なガイドは以下を参照：
+
+- [JavaScript診断の完全ガイド](docs/development/20251019_smoke_test_and_sync_check.md#緊急対応-javascript完全停止問題の調査)
+- [過去の事例：2025-10-19 JavaScript完全停止](docs/HISTORY.md#2025-10-19-javascript完全停止問題の解決緊急対応)
+- [問題分析レポート](codex_report_20251019.md)
+
+#### クイック診断手順
+
+##### 1. Safari JavaScriptコンソールでエラー行を特定
+
+```bash
+# アプリを起動して /tmp/gaq_debug.html を生成
+open "/Applications/GaQ Offline Transcriber.app"
+
+# Safariで開く
+open -a Safari /tmp/gaq_debug.html
+```
+
+Safari の「開発」メニュー → 「JavaScriptコンソールを表示」でエラーを確認
+
+##### 2. エラー行の該当コードを確認
+
+```bash
+# エラー行番号が1397の場合
+sed -n '1390,1405p' /tmp/gaq_debug.html
+```
+
+##### 3. Pythonソースで該当箇所を検索
+
+```bash
+cd release/mac/src
+# エラー行付近のJavaScriptコードで検索
+grep -n "該当するコード断片" main.py
+```
+
+##### 4. 典型的な問題パターン
+
+| エラー | 原因 | 解決方法 |
+|--------|------|----------|
+| `SyntaxError: Unexpected EOF` | JavaScript文字列内の実際の改行 | Python側で `\\n` にエスケープ |
+| `ReferenceError: XXX is not defined` | 関数定義の順序問題 | グローバルスコープで定義 |
+| `SyntaxError: Unexpected token` | クォート、括弧の不一致 | Pythonテンプレート内の構文チェック |
+
+##### 5. Python文字列エスケープの注意点
+
+Pythonのトリプルクォート(`"""..."""`)内でJavaScriptを書く場合：
+
+```python
+# ❌ 間違い - \n が実際の改行になる
+alert('テキスト\n改行');
+
+# ✅ 正しい - \\n でJavaScriptの \n になる
+alert('テキスト\\n改行');
+```
+
+##### 6. テストモードでの検証
+
+```bash
+cd release/mac
+export GAQ_TEST_MODE=1
+export GAQ_WEBVIEW_DEBUG=1
+bash test_javascript.sh
+```
+
+Alert が表示される → JavaScript実行環境は正常
+Alert が表示されない → JavaScript構文エラーまたは実行環境の問題
+
+---
+
 ## 連絡先
 
 - **Website**: https://tsuji-lab.net
