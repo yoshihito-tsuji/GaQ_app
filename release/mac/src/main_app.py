@@ -734,7 +734,8 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         FastAPIサーバープロセスを終了する
 
         - 最大5秒待機して正常終了を試みる
-        - タイムアウト時は強制終了（terminate）
+        - タイムアウト時は強制終了（terminate → kill）
+        - 最大合計8秒で必ず終了
         """
         global server_process
 
@@ -755,18 +756,27 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
             logger.info("⏳ [Shutdown] プロセスの正常終了を待機中（最大5秒）...")
             server_process.join(timeout=5)
 
-            # タイムアウト後も生きている場合は強制終了
+            # タイムアウト後も生きている場合は強制終了（terminate）
             if server_process.is_alive():
                 elapsed = time.time() - start_time
-                logger.warning(f"⚠️  [Shutdown] {elapsed:.1f}秒経過してもプロセスが終了しないため、強制終了します")
+                logger.warning(f"⚠️  [Shutdown] {elapsed:.1f}秒経過してもプロセスが終了しないため、terminate()を実行")
                 server_process.terminate()
-                server_process.join(timeout=2)  # 強制終了後も2秒待機
+                server_process.join(timeout=2)  # terminate後2秒待機
 
+                # terminate()でも終了しない場合はkill()を使用
                 if server_process.is_alive():
-                    logger.error("❌ [Shutdown] 強制終了後もプロセスが残存しています")
+                    logger.warning(f"⚠️  [Shutdown] terminate()でも終了しないため、kill()を実行")
+                    server_process.kill()
+                    server_process.join(timeout=1)  # kill後1秒待機
+
+                    if server_process.is_alive():
+                        logger.error("❌ [Shutdown] kill()後もプロセスが残存しています")
+                    else:
+                        total_time = time.time() - start_time
+                        logger.info(f"✅ [Shutdown] プロセスをkill()で強制終了しました（合計{total_time:.1f}秒）")
                 else:
                     total_time = time.time() - start_time
-                    logger.info(f"✅ [Shutdown] プロセスを強制終了しました（合計{total_time:.1f}秒）")
+                    logger.info(f"✅ [Shutdown] プロセスをterminate()で終了しました（合計{total_time:.1f}秒）")
             else:
                 elapsed = time.time() - start_time
                 logger.info(f"✅ [Shutdown] プロセスが正常終了しました（{elapsed:.1f}秒）")
@@ -778,6 +788,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     def on_closing():
         """
         ウィンドウ終了時の確認ダイアログ
+        アプリの雰囲気に合わせたAppleScriptダイアログ
 
         Returns:
             bool: True=終了を許可, False=終了をキャンセル
@@ -785,14 +796,16 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         try:
             logger.info("🚪 [Closing] ウィンドウ終了要求を検知")
 
-            # macOS用のAppleScriptダイアログで確認
+            # AppleScriptダイアログ（アイコンを "note" にして柔らかい印象に）
             script = '''
-            display dialog "処理中のタスクがある場合は中断されます。\\n\\nアプリケーションを終了してもよろしいですか？" ¬
-                with title "終了確認" ¬
+            display dialog "処理中のタスクがある場合は中断されます。
+
+アプリケーションを終了してもよろしいですか？" ¬
+                with title "GaQ Offline Transcriber - 終了確認" ¬
                 buttons {"キャンセル", "終了"} ¬
                 default button "終了" ¬
                 cancel button "キャンセル" ¬
-                with icon caution
+                with icon note
             '''
 
             result = subprocess.run(
@@ -812,8 +825,8 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
 
         except Exception as e:
             logger.error(f"❌ [Closing] 終了確認ダイアログエラー: {e}", exc_info=True)
-            # エラー時はデフォルトで終了を許可
-            return True
+            # エラー時は終了をキャンセル（安全側に倒す）
+            return False
 
     window.events.closing += on_closing
 
