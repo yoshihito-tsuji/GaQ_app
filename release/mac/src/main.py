@@ -458,6 +458,17 @@ async def root():
                 height: 100%;
                 background: rgba(0,0,0,0.5);
             }
+            /* カスタムアラートダイアログ */
+            #alertDialog {
+                display: none;
+                position: fixed;
+                z-index: 10001;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+            }
             .confirm-content {
                 background: white;
                 margin: 15% auto;
@@ -505,11 +516,11 @@ async def root():
                 background: #e0e0e0;
             }
             .confirm-btn-ok {
-                background: #e74c3c;
+                background: #6fa86f;
                 color: white;
             }
             .confirm-btn-ok:hover {
-                background: #d32f2f;
+                background: #5a8f5a;
             }
         </style>
     </head>
@@ -540,7 +551,7 @@ async def root():
 
             <button id="transcribeBtn" disabled>文字起こし開始</button>
 
-            <p class="credit">公立はこだて未来大学：辻研究室</p>
+            <p class="credit">公立はこだて未来大学：辻研究室（tsuji-lab.net）</p>
 
             <div class="progress" id="progress">
                 <p>🔄 処理中...</p>
@@ -626,6 +637,7 @@ async def root():
 
             // ★カスタム確認ダイアログAPI - グローバルに公開（initializeApp定義前に必須）
             var confirmCallback = null;
+            var alertCallback = null;
 
             window.showConfirmDialog = function(message, callback) {
                 console.log('🔔 showConfirmDialog() 呼び出し:', message);
@@ -640,6 +652,22 @@ async def root():
                 if (confirmCallback) {
                     confirmCallback(result);
                     confirmCallback = null;
+                }
+            };
+
+            window.showAlertDialog = function(message, callback) {
+                console.log('🔔 showAlertDialog() 呼び出し:', message);
+                document.getElementById('alertMessage').textContent = message;
+                document.getElementById('alertDialog').style.display = 'block';
+                alertCallback = callback;
+            };
+
+            window.closeAlertDialog = function() {
+                console.log('🔔 closeAlertDialog() 呼び出し');
+                document.getElementById('alertDialog').style.display = 'none';
+                if (alertCallback) {
+                    alertCallback();
+                    alertCallback = null;
                 }
             };
 
@@ -736,6 +764,16 @@ async def root():
                     setTimeout(function() {
                         toast.classList.remove('show');
                     }, duration);
+                }
+
+                // モデル名を表示用に変換する関数
+                function getModelDisplayName(modelName) {
+                    if (modelName === 'medium') {
+                        return 'Medium';
+                    } else if (modelName === 'large-v3') {
+                        return 'Large-v3';
+                    }
+                    return modelName;
                 }
 
             // デフォルト動作を完全に防止する関数
@@ -1013,9 +1051,10 @@ async def root():
                     }
 
                     if (!data.exists) {
-                        var message = 'モデル「' + model + '」をダウンロードします（約' + data.size_gb + 'GB）。';
-                        alert(message);
-                        await proceedTranscription();
+                        var message = 'モデル「' + getModelDisplayName(model) + '」をダウンロードします（約' + data.size_gb + 'GB）。';
+                        showAlertDialog(message, function() {
+                            proceedTranscription();
+                        });
                     } else {
                         await proceedTranscription();
                     }
@@ -1097,7 +1136,7 @@ async def root():
                                             stats.innerHTML =
                                                 '<strong>文字数:</strong> ' + data.result.char_count.toLocaleString() + '文字 | ' +
                                                 '<strong>処理時間:</strong> ' + data.result.duration.toFixed(1) + '秒 | ' +
-                                                '<strong>セグメント:</strong> ' + data.result.segment_count;
+                                                '<strong>音声認識モデル:</strong> ' + (model === 'medium' ? 'Medium' : 'Large-v3');
                                             resultDiv.style.display = 'block';
                                             saveBtn.style.display = 'block';
                                             progress.style.display = 'none';
@@ -1189,7 +1228,7 @@ async def root():
                                             stats.innerHTML =
                                                 '<strong>文字数:</strong> ' + data.result.char_count.toLocaleString() + '文字 | ' +
                                                 '<strong>処理時間:</strong> ' + data.result.duration.toFixed(1) + '秒 | ' +
-                                                '<strong>セグメント:</strong> ' + data.result.segment_count;
+                                                '<strong>音声認識モデル:</strong> ' + (model === 'medium' ? 'Medium' : 'Large-v3');
                                             resultDiv.style.display = 'block';
                                             saveBtn.style.display = 'block';
                                             progress.style.display = 'none';
@@ -1287,7 +1326,7 @@ async def root():
                             var url = URL.createObjectURL(blob);
                             var a = document.createElement('a');
                             a.href = url;
-                            a.download = 'transcription_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
+                            a.download = '文字起こし結果_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.txt';
                             document.body.appendChild(a);
                             a.click();
                             document.body.removeChild(a);
@@ -1326,7 +1365,7 @@ async def root():
                             // モデルが未ダウンロード
                             console.log('Model NOT exists - showing notification');
                             // トースト通知で案内（確認ダイアログは廃止）
-                            showToast('モデル「' + modelName + '」をダウンロードします（約' + data.size_gb + 'GB）', 4000);
+                            showToast('モデル「' + getModelDisplayName(modelName) + '」をダウンロードします（約' + data.size_gb + 'GB）', 4000);
                             showToast('しばらくお待ちください...', 3000);
                         } else {
                             console.log('Model exists - no notification shown');
@@ -1446,11 +1485,11 @@ async def root():
                     // ★未定義ガード: showConfirmDialogが利用可能か確認
                     if (typeof window.showConfirmDialog !== 'function') {
                         console.error('❌ showConfirmDialog is not defined - カスタムダイアログAPIが未登録です');
-                        alert('モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。');
+                        alert('モデル「' + getModelDisplayName(modelName) + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。');
                         return;
                     }
 
-                    var message = 'モデル「' + modelName + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。';
+                    var message = 'モデル「' + getModelDisplayName(modelName) + '」を削除しますか？\\n\\n削除後は再度ダウンロードが必要です。';
                     showConfirmDialog(message, function(confirmed) {
                         if (!confirmed) {
                             return;
@@ -1598,6 +1637,17 @@ async def root():
                 <div class="confirm-footer">
                     <button class="confirm-btn confirm-btn-cancel" onclick="closeConfirmDialog(false)">キャンセル</button>
                     <button class="confirm-btn confirm-btn-ok" onclick="closeConfirmDialog(true)">OK</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- カスタムアラートダイアログ -->
+        <div id="alertDialog">
+            <div class="confirm-content">
+                <div class="confirm-header">お知らせ</div>
+                <div class="confirm-body" id="alertMessage"></div>
+                <div class="confirm-footer">
+                    <button class="confirm-btn confirm-btn-ok" onclick="closeAlertDialog()">OK</button>
                 </div>
             </div>
         </div>
@@ -1882,7 +1932,7 @@ async def transcribe_stream(
             model_info = check_model_exists(model)
             if not model_info["exists"]:
                 # モデルが未ダウンロード - ダウンロードに数分かかることを明示
-                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください\n\nダウンロード後、自動的に文字起こしを開始します"
+                status_msg = f"音声認識モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください\n\nダウンロード後、自動的に文字起こしを開始します"
                 yield f"data: {json.dumps({'progress': 5, 'status': status_msg})}\n\n"
             else:
                 yield f"data: {json.dumps({'progress': 5, 'status': '音声認識モデル起動中...'})}\n\n"
@@ -2007,7 +2057,7 @@ async def transcribe_stream_by_id(
 
             model_info = check_model_exists(model)
             if not model_info["exists"]:
-                status_msg = f"モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください\n\nダウンロード後、自動的に文字起こしを開始します"
+                status_msg = f"音声認識モデルをダウンロード中（約{model_info['size_gb']}GB）\nしばらくお待ちください\n\nダウンロード後、自動的に文字起こしを開始します"
                 yield f"data: {json.dumps({'progress': 5, 'status': status_msg})}\n\n"
             else:
                 yield f"data: {json.dumps({'progress': 5, 'status': '音声認識モデル起動中...'})}\n\n"
@@ -2139,7 +2189,7 @@ async def save_transcription():
 
     # ファイル名生成
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"transcription_{timestamp}.txt"
+    filename = f"文字起こし結果_{timestamp}.txt"
 
     # テキスト内容生成
     text = last_transcription["text"]

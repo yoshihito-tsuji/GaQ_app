@@ -389,7 +389,7 @@ class Bridge:
             file_types = ('Text Files (*.txt)', )
             save_path = webview.windows[0].create_file_dialog(
                 webview.SAVE_DIALOG,
-                save_filename=f'transcription_{timestamp_dt.strftime("%Y%m%d_%H%M%S")}.txt',
+                save_filename=f'文字起こし結果_{timestamp_dt.strftime("%Y%m%d_%H%M%S")}.txt',
                 file_types=file_types
             )
 
@@ -567,7 +567,13 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         host: ホスト名
         port: ポート番号
     """
-    url = f"http://{host}:{port}"
+    # テストモード確認（環境変数 GAQ_TEST_MODE=1 で /test ページを開く）
+    test_mode = os.environ.get("GAQ_TEST_MODE", "0") == "1"
+    if test_mode:
+        url = f"http://{host}:{port}/test"
+        logger.info("🧪 [TEST MODE] テストページを起動します: /test")
+    else:
+        url = f"http://{host}:{port}"
 
     # サーバー起動を待機
     if not is_server_ready(host, port):
@@ -584,7 +590,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     # Webviewウィンドウを作成
     logger.info(f"🖥️ Webviewウィンドウ起動: {url}")
     window = webview.create_window(
-        title=f"GaQ Offline Transcriber {APP_VERSION}",
+        title=f"GaQ Offline Transcriber v{APP_VERSION}",
         url=url,
         width=800,
         height=900,

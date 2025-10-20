@@ -389,7 +389,7 @@ class Bridge:
             file_types = ('Text Files (*.txt)', )
             save_path = webview.windows[0].create_file_dialog(
                 webview.SAVE_DIALOG,
-                save_filename=f'transcription_{timestamp_dt.strftime("%Y%m%d_%H%M%S")}.txt',
+                save_filename=f'文字起こし結果_{timestamp_dt.strftime("%Y%m%d_%H%M%S")}.txt',
                 file_types=file_types
             )
 
@@ -590,7 +590,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     # Webviewウィンドウを作成
     logger.info(f"🖥️ Webviewウィンドウ起動: {url}")
     window = webview.create_window(
-        title=f"GaQ Offline Transcriber {APP_VERSION}",
+        title=f"GaQ Offline Transcriber v{APP_VERSION}",
         url=url,
         width=800,
         height=900,
