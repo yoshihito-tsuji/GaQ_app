@@ -30,6 +30,8 @@
       "Bash(pip show:*)",
       "Bash(open:*)",
       "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git stash:*)",
       "Bash(./scripts/check_sync.sh:*)",
       "Read(//Applications/GaQ Offline Transcriber.app/Contents/MacOS/**)",
       "Bash(\"/Applications/GaQ Offline Transcriber.app/Contents/MacOS/GaQ_Transcriber\")",
@@ -37,7 +39,8 @@
       "Read(//Users/yoshihitotsuji/.gaq/logs/**)",
       "Bash(\"/Applications/GaQ Offline Transcriber.app/Contents/MacOS/GaQ_Transcriber\" --help)",
       "Bash(grep:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(./scripts/check_sync.sh)"
     ],
     "deny": [],
     "ask": []

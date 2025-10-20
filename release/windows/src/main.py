@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -40,10 +41,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# PyInstaller対応: 実行時の基準ディレクトリを取得
+def get_base_path():
+    """
+    PyInstallerでパッケージ化されているかどうかを判定し、
+    適切な基準パスを返す
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstallerでパッケージ化されている場合
+        # sys._MEIPASSは一時展開ディレクトリを指す
+        return Path(sys._MEIPASS)
+    else:
+        # 開発環境の場合
+        return Path(__file__).parent
+
 # 静的ファイルの配信
-static_dir = Path(__file__).parent / "static"
+static_dir = get_base_path() / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    logger.info(f"✅ Static files mounted: {static_dir}")
+else:
+    logger.warning(f"⚠️ Static directory not found: {static_dir}")
 
 # グローバル変数：最後の文字起こし結果を保存
 last_transcription = {"text": "", "processing_time": 0, "timestamp": None, "model": ""}
@@ -1089,18 +1107,33 @@ async def root():
                     body: formData
                 })
                 .then(function(response) {
-                    var reader = response.body.getReader();
-                    var decoder = new TextDecoder();
-                    var buffer = '';
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                    }
+                    if (!response.body) {
+                        throw new Error('レスポンスボディが取得できません');
+                    }
+
+                    var reader, decoder, buffer;
+                    try {
+                        reader = response.body.getReader();
+                        decoder = new TextDecoder();
+                        buffer = '';
+                    } catch (e) {
+                        throw new Error('ストリーム読み取り準備エラー: ' + e.message);
+                    }
 
                     function processStream() {
                         return reader.read().then(function(result) {
                             if (result.done) {
+                                console.log('✅ ストリーム読み取り完了');
                                 return;
                             }
 
                             // 受信したデータをデコード
-                            buffer += decoder.decode(result.value, { stream: true });
+                            var chunk = decoder.decode(result.value, { stream: true });
+                            console.log('📦 受信チャンク:', chunk.substring(0, 100));
+                            buffer += chunk;
 
                             // 改行で分割してイベントを処理
                             var lines = buffer.split("\\n");
@@ -1153,6 +1186,10 @@ async def root():
                     return processStream();
                 })
                 .catch(function(error) {
+                    console.error('❌ fetch失敗:', error);
+                    console.error('エラー名:', error.name);
+                    console.error('エラーメッセージ:', error.message);
+                    console.error('エラースタック:', error.stack);
                     alert('エラー: ' + error.message);
                     progress.style.display = 'none';
                     transcribeBtn.disabled = false;
@@ -1181,18 +1218,35 @@ async def root():
                     method: 'GET'
                 })
                 .then(function(response) {
-                    var reader = response.body.getReader();
-                    var decoder = new TextDecoder();
-                    var buffer = '';
+                    console.log('✅ fetch成功:', response.status, response.statusText);
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+                    }
+                    if (!response.body) {
+                        throw new Error('レスポンスボディが取得できません');
+                    }
+
+                    var reader, decoder, buffer;
+                    try {
+                        reader = response.body.getReader();
+                        decoder = new TextDecoder();
+                        buffer = '';
+                        console.log('✅ ストリームリーダー準備完了');
+                    } catch (e) {
+                        throw new Error('ストリーム読み取り準備エラー: ' + e.message);
+                    }
 
                     function processStream() {
                         return reader.read().then(function(result) {
                             if (result.done) {
+                                console.log('✅ ストリーム読み取り完了');
                                 return;
                             }
 
                             // 受信したデータをデコード
-                            buffer += decoder.decode(result.value, { stream: true });
+                            var chunk = decoder.decode(result.value, { stream: true });
+                            console.log('📦 受信チャンク:', chunk.substring(0, 100));
+                            buffer += chunk;
 
                             // 改行で分割してイベントを処理
                             var lines = buffer.split("\\n");
@@ -1245,6 +1299,10 @@ async def root():
                     return processStream();
                 })
                 .catch(function(error) {
+                    console.error('❌ fetch失敗:', error);
+                    console.error('エラー名:', error.name);
+                    console.error('エラーメッセージ:', error.message);
+                    console.error('エラースタック:', error.stack);
                     alert('エラー: ' + error.message);
                     progress.style.display = 'none';
                     transcribeBtn.disabled = false;
@@ -1966,6 +2024,9 @@ async def transcribe_stream(
 
                 # 進捗を送信しながら完了を待つ
                 last_progress = 5
+                heartbeat_counter = 0
+                MAX_WAIT_WITHOUT_HEARTBEAT = 100  # 10秒ごとにハートビート (0.1秒 × 100)
+
                 while not future.done():
                     try:
                         # 100ms待機して進捗をチェック
@@ -1973,8 +2034,15 @@ async def transcribe_stream(
                         if progress > last_progress:
                             last_progress = progress
                             yield f"data: {json.dumps({'progress': progress, 'status': '文字起こし中...'})}\n\n"
+                            heartbeat_counter = 0  # 進捗イベント送信時はカウンタリセット
+                            logger.debug(f"📊 進捗送信: {progress}%")
                     except TimeoutError:
-                        # タイムアウトしても継続
+                        heartbeat_counter += 1
+                        # 10秒ごとにハートビート送信（SSE接続維持のため）
+                        if heartbeat_counter >= MAX_WAIT_WITHOUT_HEARTBEAT:
+                            yield ": heartbeat\n\n"
+                            logger.debug("💓 ハートビート送信")
+                            heartbeat_counter = 0
                         pass
 
                 # 結果を取得
@@ -2090,13 +2158,24 @@ async def transcribe_stream_by_id(
 
                 # 進捗を送信しながら完了を待つ
                 last_progress = 5
+                heartbeat_counter = 0
+                MAX_WAIT_WITHOUT_HEARTBEAT = 100  # 10秒ごとにハートビート (0.1秒 × 100)
+
                 while not future.done():
                     try:
                         progress = await asyncio.wait_for(progress_queue.get(), timeout=0.1)
                         if progress > last_progress:
                             last_progress = progress
                             yield f"data: {json.dumps({'progress': progress, 'status': '文字起こし中...'})}\n\n"
+                            heartbeat_counter = 0  # 進捗イベント送信時はカウンタリセット
+                            logger.debug(f"📊 進捗送信: {progress}%")
                     except TimeoutError:
+                        heartbeat_counter += 1
+                        # 10秒ごとにハートビート送信（SSE接続維持のため）
+                        if heartbeat_counter >= MAX_WAIT_WITHOUT_HEARTBEAT:
+                            yield ": heartbeat\n\n"
+                            logger.debug("💓 ハートビート送信")
+                            heartbeat_counter = 0
                         pass
 
                 # 結果を取得
