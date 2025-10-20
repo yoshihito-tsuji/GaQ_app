@@ -46,6 +46,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# FastAPIサーバープロセスのグローバル参照（終了時に使用）
+server_process = None
+
 
 def acquire_single_instance_lock():
     """
@@ -147,7 +150,7 @@ def is_server_ready(host: str = "127.0.0.1", port: int = 8000, timeout: int = 30
 
 def run_fastapi_server(host: str = "127.0.0.1", port: int = 8000):
     """
-    FastAPIサーバーを起動（別スレッドで実行）
+    FastAPIサーバーを起動（別プロセスで実行）
 
     Args:
         host: ホスト名
@@ -725,6 +728,95 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     # loadedイベント後にドラッグ&ドロップハンドラーを設定
     window.events.loaded += setup_drag_drop_handler
 
+    # ★第2段階: FastAPIプロセス終了処理
+    def shutdown_server():
+        """
+        FastAPIサーバープロセスを終了する
+
+        - 最大5秒待機して正常終了を試みる
+        - タイムアウト時は強制終了（terminate）
+        """
+        global server_process
+
+        if server_process is None:
+            logger.info("🔹 [Shutdown] サーバープロセスは未起動または既に終了済み")
+            return
+
+        try:
+            logger.info("🛑 [Shutdown] FastAPIサーバープロセスの終了を開始...")
+            start_time = time.time()
+
+            # プロセスが生きているかチェック
+            if not server_process.is_alive():
+                logger.info("✅ [Shutdown] サーバープロセスは既に終了済み")
+                return
+
+            # 正常終了を試みる（5秒待機）
+            logger.info("⏳ [Shutdown] プロセスの正常終了を待機中（最大5秒）...")
+            server_process.join(timeout=5)
+
+            # タイムアウト後も生きている場合は強制終了
+            if server_process.is_alive():
+                elapsed = time.time() - start_time
+                logger.warning(f"⚠️  [Shutdown] {elapsed:.1f}秒経過してもプロセスが終了しないため、強制終了します")
+                server_process.terminate()
+                server_process.join(timeout=2)  # 強制終了後も2秒待機
+
+                if server_process.is_alive():
+                    logger.error("❌ [Shutdown] 強制終了後もプロセスが残存しています")
+                else:
+                    total_time = time.time() - start_time
+                    logger.info(f"✅ [Shutdown] プロセスを強制終了しました（合計{total_time:.1f}秒）")
+            else:
+                elapsed = time.time() - start_time
+                logger.info(f"✅ [Shutdown] プロセスが正常終了しました（{elapsed:.1f}秒）")
+
+        except Exception as e:
+            logger.error(f"❌ [Shutdown] プロセス終了処理でエラーが発生: {e}", exc_info=True)
+
+    # ★第1段階: 終了確認ダイアログの実装
+    def on_closing():
+        """
+        ウィンドウ終了時の確認ダイアログ
+
+        Returns:
+            bool: True=終了を許可, False=終了をキャンセル
+        """
+        try:
+            logger.info("🚪 [Closing] ウィンドウ終了要求を検知")
+
+            # macOS用のAppleScriptダイアログで確認
+            script = '''
+            display dialog "処理中のタスクがある場合は中断されます。\\n\\nアプリケーションを終了してもよろしいですか？" ¬
+                with title "終了確認" ¬
+                buttons {"キャンセル", "終了"} ¬
+                default button "終了" ¬
+                cancel button "キャンセル" ¬
+                with icon caution
+            '''
+
+            result = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                logger.info("✅ [Closing] ユーザーが終了を承認")
+                # ★第2段階: FastAPIサーバープロセスを終了
+                shutdown_server()
+                return True
+            else:
+                logger.info("❌ [Closing] ユーザーが終了をキャンセル")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ [Closing] 終了確認ダイアログエラー: {e}", exc_info=True)
+            # エラー時はデフォルトで終了を許可
+            return True
+
+    window.events.closing += on_closing
+
     # Webviewを起動（メインスレッド）
     webview_debug = os.environ.get("GAQ_WEBVIEW_DEBUG", "0") == "1"
     private_mode_env = os.environ.get("GAQ_WEBVIEW_PRIVATE")
@@ -758,11 +850,13 @@ def main():
             # 既に設定済みの場合は何もしない
             pass
 
-    # FastAPIサーバーを別スレッドで起動
-    server_thread = threading.Thread(
+    # ★第2段階: FastAPIサーバーを別プロセスで起動（Thread→Process化）
+    global server_process
+    server_process = multiprocessing.Process(
         target=run_fastapi_server, args=("127.0.0.1", 8000), daemon=True
     )
-    server_thread.start()
+    server_process.start()
+    logger.info(f"🚀 [Main] FastAPIサーバープロセスを起動 (PID: {server_process.pid})")
 
     # Webviewウィンドウを作成（メインスレッド）
     create_webview_window("127.0.0.1", 8000)
