@@ -21,11 +21,18 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from transcribe import transcription_service
 
+# 環境変数設定
+SSE_HEARTBEAT_INTERVAL = float(os.getenv("GAQ_SSE_HEARTBEAT_INTERVAL", "10"))  # デフォルト10秒
+LOG_LEVEL = os.getenv("GAQ_LOG_LEVEL", "INFO").upper()  # デフォルトINFO
+
 # ログ設定
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+logger.info(f"ログレベル: {LOG_LEVEL}")
+logger.info(f"SSEハートビート間隔: {SSE_HEARTBEAT_INTERVAL}秒")
 
 # FastAPIアプリケーション
 app = FastAPI(
@@ -1957,6 +1964,7 @@ async def transcribe_stream(
 
     async def event_stream():
         temp_file = None
+        future = None
         try:
             # ファイル拡張子チェック
             file_ext = Path(file.filename).suffix.lower()
@@ -2024,26 +2032,20 @@ async def transcribe_stream(
 
                 # 進捗を送信しながら完了を待つ
                 last_progress = 5
-                heartbeat_counter = 0
-                MAX_WAIT_WITHOUT_HEARTBEAT = 100  # 10秒ごとにハートビート (0.1秒 × 100)
 
                 while not future.done():
                     try:
-                        # 100ms待機して進捗をチェック
-                        progress = await asyncio.wait_for(progress_queue.get(), timeout=0.1)
-                        if progress > last_progress:
-                            last_progress = progress
-                            yield f"data: {json.dumps({'progress': progress, 'status': '文字起こし中...'})}\n\n"
-                            heartbeat_counter = 0  # 進捗イベント送信時はカウンタリセット
-                            logger.debug(f"📊 進捗送信: {progress}%")
+                        # ハートビート間隔で進捗を待機
+                        async with asyncio.timeout(SSE_HEARTBEAT_INTERVAL):
+                            progress = await progress_queue.get()
+                            if progress > last_progress:
+                                last_progress = progress
+                                yield f"data: {json.dumps({'progress': progress, 'status': '文字起こし中...'})}\n\n"
+                                logger.debug(f"📊 進捗送信: {progress}%")
                     except TimeoutError:
-                        heartbeat_counter += 1
-                        # 10秒ごとにハートビート送信（SSE接続維持のため）
-                        if heartbeat_counter >= MAX_WAIT_WITHOUT_HEARTBEAT:
-                            yield ": heartbeat\n\n"
-                            logger.debug("💓 ハートビート送信")
-                            heartbeat_counter = 0
-                        pass
+                        # タイムアウト時はハートビート送信（SSE接続維持のため）
+                        yield ": heartbeat\n\n"
+                        logger.debug("💓 ハートビート送信")
 
                 # 結果を取得
                 result = future.result()
@@ -2065,6 +2067,11 @@ async def transcribe_stream(
             if temp_file:
                 background_tasks.add_task(cleanup_file, temp_file)
 
+        except asyncio.CancelledError:
+            logger.info("🔌 クライアント切断検知")
+            if future:
+                future.cancel()
+            raise
         except Exception as e:
             logger.error(f"❌ ストリーム処理エラー: {e}", exc_info=True)
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -2072,6 +2079,9 @@ async def transcribe_stream(
             # エラー時もファイル削除
             if temp_file:
                 background_tasks.add_task(cleanup_file, temp_file)
+        finally:
+            # クリーンアップ処理
+            pass
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -2095,6 +2105,7 @@ async def transcribe_stream_by_id(
 
     async def event_stream():
         temp_file = None
+        future = None
         try:
             # file_idからファイルパスを検索
             logger.info(f"file_idから文字起こし開始: {file_id}, model: {model}")
@@ -2158,25 +2169,20 @@ async def transcribe_stream_by_id(
 
                 # 進捗を送信しながら完了を待つ
                 last_progress = 5
-                heartbeat_counter = 0
-                MAX_WAIT_WITHOUT_HEARTBEAT = 100  # 10秒ごとにハートビート (0.1秒 × 100)
 
                 while not future.done():
                     try:
-                        progress = await asyncio.wait_for(progress_queue.get(), timeout=0.1)
-                        if progress > last_progress:
-                            last_progress = progress
-                            yield f"data: {json.dumps({'progress': progress, 'status': '文字起こし中...'})}\n\n"
-                            heartbeat_counter = 0  # 進捗イベント送信時はカウンタリセット
-                            logger.debug(f"📊 進捗送信: {progress}%")
+                        # ハートビート間隔で進捗を待機
+                        async with asyncio.timeout(SSE_HEARTBEAT_INTERVAL):
+                            progress = await progress_queue.get()
+                            if progress > last_progress:
+                                last_progress = progress
+                                yield f"data: {json.dumps({'progress': progress, 'status': '文字起こし中...'})}\n\n"
+                                logger.debug(f"📊 進捗送信: {progress}%")
                     except TimeoutError:
-                        heartbeat_counter += 1
-                        # 10秒ごとにハートビート送信（SSE接続維持のため）
-                        if heartbeat_counter >= MAX_WAIT_WITHOUT_HEARTBEAT:
-                            yield ": heartbeat\n\n"
-                            logger.debug("💓 ハートビート送信")
-                            heartbeat_counter = 0
-                        pass
+                        # タイムアウト時はハートビート送信（SSE接続維持のため）
+                        yield ": heartbeat\n\n"
+                        logger.debug("💓 ハートビート送信")
 
                 # 結果を取得
                 result = future.result()
@@ -2198,6 +2204,11 @@ async def transcribe_stream_by_id(
             if temp_file:
                 background_tasks.add_task(cleanup_file, temp_file)
 
+        except asyncio.CancelledError:
+            logger.info("🔌 クライアント切断検知 (file_id)")
+            if future:
+                future.cancel()
+            raise
         except Exception as e:
             logger.error(f"❌ ストリーム処理エラー (file_id): {e}", exc_info=True)
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -2205,6 +2216,9 @@ async def transcribe_stream_by_id(
             # エラー時もファイル削除
             if temp_file:
                 background_tasks.add_task(cleanup_file, temp_file)
+        finally:
+            # クリーンアップ処理
+            pass
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

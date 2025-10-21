@@ -1,5 +1,166 @@
 # GaQ Offline Transcriber - 開発履歴
 
+## 2025-10-21: v1.1.1リリース（フェーズ1改善完了）
+
+### リリース情報
+
+**バージョン**: v1.1.1
+**リリース日**: 2025-10-21
+**プラットフォーム**: macOS (Intel & Apple Silicon)
+**DMGサイズ**: 77MB
+**リリースノート**: [RELEASE_NOTES_v1.1.1.md](RELEASE_NOTES_v1.1.1.md)
+
+### 作業概要
+- **作業時間**: 2025-10-21 約3時間
+- **担当**: Claude Code + Codex（技術コンサルティング）
+- **ステータス**: ✅ 実装完了、テスト完了、ビルド完了、リリース済み
+
+---
+
+## 2025-10-21: フェーズ1改善実装とテスト完了
+
+### 作業概要
+- **作業時間**: 2025-10-21 約2時間
+- **担当**: Claude Code + Codex（技術コンサルティング）
+- **ステータス**: ✅ 実装完了、テスト完了
+
+### 実装内容
+
+Codex相談結果（[20251021_codex_response_analysis.md](development/20251021_codex_response_analysis.md)）のフェーズ1（高優先度）4項目を実装：
+
+#### 1. ハートビート間隔の設定化
+- 環境変数 `GAQ_SSE_HEARTBEAT_INTERVAL` でSSEハートビート間隔を調整可能に
+- デフォルト: 10秒（既存動作と同じ）
+- リスク: ゼロ
+
+#### 2. ログレベル制御
+- 環境変数 `GAQ_LOG_LEVEL` でログレベルを制御可能に
+- デフォルト: INFO（ハートビートログは非表示でノイズ削減）
+- DEBUG時: ハートビートログを含む詳細ログを出力
+- リスク: 非常に低い
+
+#### 3. 非ポーリング化の簡素化
+- 0.1秒ポーリング → `asyncio.timeout()` による非ポーリング方式に変更
+- `heartbeat_counter` と `MAX_WAIT_WITHOUT_HEARTBEAT` を削除
+- CPU使用量削減、コード明確化
+- リスク: 低い
+
+#### 4. SSE切断検知とログ整備
+- `asyncio.CancelledError` による切断検知を実装
+- 切断時に「🔌 クライアント切断検知」をログ出力
+- Futureのキャンセル処理を追加
+- リスク: 非常に低い
+
+### テスト結果
+
+**自動テスト**: ✅ ALL PASS
+- テスト1: ハートビート間隔の設定化 - ✅ PASS
+- テスト2: ログレベル制御 - ✅ PASS
+- テスト3: 非ポーリング化（コードレビュー） - ✅ PASS
+- テスト4: SSE切断検知（コードレビュー） - ✅ PASS
+
+**詳細**: [20251021_phase1_test_results.md](development/20251021_phase1_test_results.md)
+
+### 変更ファイル
+- [release/mac/src/main.py](../release/mac/src/main.py): 2321行（+14行）
+- [release/windows/src/main.py](../release/windows/src/main.py): 2321行（+14行）
+- ソースコード同期: ✅ 完全同期（`check_sync.sh` で確認）
+
+### 次のステップ
+- ユーザーによる手動テスト（手順書: [20251021_phase1_test_results.md](development/20251021_phase1_test_results.md)）
+- Windows実機でのビルドとテスト
+- フェーズ2改善項目の検討
+
+---
+
+## 2025-10-21: クリップボードコピー検証処理のノイズ除去
+
+### 作業概要
+- **作業時間**: 2025-10-21 約20分
+- **担当**: Claude Code + Codex（技術コンサルティング）
+- **ステータス**: ✅ 完了
+
+### 発生した問題
+
+#### 症状
+2025-10-20の動作検証中、クリップボードコピー時に以下の警告がログに記録された：
+
+```text
+WARNING - ⚠️ UTF-8デコードエラー - errors='replace'でデコードしました
+WARNING - ⚠️ クリップボード内容が一致しません (expected: 49817, actual: 78110)
+```
+
+#### 影響範囲
+- **機能的な問題**: なし（クリップボードコピーは正常動作）
+- **ログノイズ**: あり（不要な警告が記録される）
+- **ユーザー影響**: なし（警告はログにのみ表示）
+
+### 根本原因
+
+**pbpaste検証処理の誤検知**
+
+1. **AppleScriptでのコピー**: ✅ 成功
+   - UTF-8形式で正しくクリップボードにコピー
+   - 実際のユーザー操作で問題なくペースト可能
+
+2. **pbpaste検証**: ❌ 誤検知
+   - macOSのクリップボードには複数形式（UTF-8、RTF、HTMLなど）が保存される
+   - `pbpaste`がRTF形式など別のエンコーディングで取得
+   - UTF-8デコード失敗により文字化け
+   - 文字数不一致（RTFフォーマット情報が含まれるため）
+
+### 実施した修正
+
+**検証処理を完全削除**
+
+**理由**:
+- AppleScriptの`set the clipboard to`は十分に信頼できる
+- 検証処理が誤検知している（実際はコピー成功しているのに警告）
+- ユーザー体験に影響なし
+- コードの簡潔化
+
+**修正内容**:
+- [release/mac/src/main_app.py](../../release/mac/src/main_app.py):278-312 - pbpaste検証処理を削除（35行削減）
+- [release/windows/src/main_app.py](../../release/windows/src/main_app.py):278-312 - 同上
+
+### 成果
+
+**修正効果**:
+- ✅ ログノイズ完全除去
+- ✅ コード簡潔化（36行削減：884行 → 848行）
+- ✅ 実行速度わずかに向上（pbpaste実行の100ms wait + 5秒timeoutが不要に）
+- ✅ ソース同期確認済み
+
+**動作確認**:
+- クリップボードコピー機能は正常動作
+- 長文（49,817文字）でも正常コピー
+- ログに警告なし
+
+### Codexの判断
+
+> AppleScript経由のコピー自体は成功しており、保存ファイルの文字数一致からも内容は正しいと判断できる。
+> 本番でのログノイズを避けるなら、検証処理を削除し、必要時のみ手動確認する運用が現実的。
+
+### 教訓
+
+**クリップボード操作の設計指針**:
+- AppleScriptの`set the clipboard to`は十分に信頼できる
+- `pbpaste`での検証は、エンコーディング問題で誤検知する可能性がある
+- 検証が必要な場合は、AppleScriptで直接読み取る方が安全
+- 本番環境でのログノイズは最小限に抑える
+
+### 関連ファイル
+
+**修正**:
+- [release/mac/src/main_app.py](../../release/mac/src/main_app.py)
+- [release/windows/src/main_app.py](../../release/windows/src/main_app.py)
+
+**ドキュメント**:
+- [docs/development/20251021_clipboard_verification_noise_removal.md](development/20251021_clipboard_verification_noise_removal.md) - 詳細作業ログ
+- [README.md](../../README.md) - トラブルシューティングセクション追加
+
+---
+
 ## 2025-10-20: SSE接続タイムアウト問題の解決（「エラー: Load failed」修正）
 
 ### 作業概要

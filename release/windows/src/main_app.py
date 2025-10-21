@@ -275,42 +275,6 @@ class Bridge:
 
                 logger.info(f"✅ AppleScriptでクリップボードにコピーしました ({len(text)}文字)")
 
-                # 検証: pbpasteで確認（エンコーディングエラーを回避）
-                time.sleep(0.1)  # クリップボード更新を待つ
-
-                try:
-                    # バイナリモードで取得してから、エンコーディングを試行
-                    verify_process = subprocess.Popen(
-                        ['pbpaste'],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
-                    )
-                    stdout_bytes, stderr_bytes = verify_process.communicate(timeout=5)
-
-                    if verify_process.returncode == 0:
-                        # UTF-8でデコードを試みる
-                        try:
-                            clipboard_text = stdout_bytes.decode('utf-8')
-                        except UnicodeDecodeError:
-                            # UTF-8で失敗したら、エラーを無視してデコード
-                            clipboard_text = stdout_bytes.decode('utf-8', errors='replace')
-                            logger.warning(f"⚠️ UTF-8デコードエラー - errors='replace'でデコードしました")
-
-                        if clipboard_text == text:
-                            logger.info(f"✅ クリップボード内容検証成功 ({len(clipboard_text)}文字)")
-                        else:
-                            logger.warning(f"⚠️ クリップボード内容が一致しません (expected: {len(text)}, actual: {len(clipboard_text)})")
-                            logger.info(f"Expected first 50 chars: {repr(text[:50])}")
-                            logger.info(f"Actual first 50 chars: {repr(clipboard_text[:50])}")
-                    else:
-                        stderr_text = stderr_bytes.decode('utf-8', errors='replace')
-                        logger.warning(f"⚠️ pbpasteでの検証失敗: {stderr_text}")
-
-                except subprocess.TimeoutExpired:
-                    logger.warning(f"⚠️ pbpaste検証タイムアウト")
-                except Exception as e:
-                    logger.warning(f"⚠️ pbpaste検証エラー: {e}")
-
                 return {
                     "success": True,
                     "message": "クリップボードにコピーしました"

@@ -40,7 +40,18 @@
       "Bash(\"/Applications/GaQ Offline Transcriber.app/Contents/MacOS/GaQ_Transcriber\" --help)",
       "Bash(grep:*)",
       "Bash(chmod:*)",
-      "Bash(./scripts/check_sync.sh)"
+      "Bash(./scripts/check_sync.sh)",
+      "Bash(kill 34348)",
+      "Bash(ls -lh ~/Desktop/*.{mp3,m4a,wav})",
+      "Bash(say -o /tmp/test_audio.aiff \"こんにちは。これはハートビート間隔のテストです。5秒ごとにハートビートが送信されることを確認します。\")",
+      "Bash(ffmpeg -y -i /tmp/test_audio.aiff -acodec libmp3lame /tmp/test_audio.mp3)",
+      "Read(//tmp/**)",
+      "Read(//Users/yoshihitotsuji/Downloads/**)",
+      "Bash(./build.sh)",
+      "Bash(tee /tmp/build_v1.1.1.log)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
