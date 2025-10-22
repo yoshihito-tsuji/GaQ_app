@@ -43,6 +43,7 @@ logs/
 .idea/
 *.swp
 *.swo
+.claude/settings.local.json
 
 # 一時ファイル
 tmp/
