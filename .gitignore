@@ -71,3 +71,4 @@ archive/
 # Git管理メモ
 # このプロジェクトはソースコードと設定ファイルのみをGit管理します
 # ビルド成果物（DMG、.app）はGitHub Releasesで配布します
+release/mac/src/.venv/

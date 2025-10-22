@@ -4,13 +4,21 @@ faster-whisperを使用した音声認識
 """
 
 import logging
+import os
 import re
 import shutil
 import time
 from pathlib import Path
 from typing import Any, Optional
 
+# ===== Windows対応: シンボリックリンク無効化 =====
+# 配布版で管理者権限を要求しないための設定
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+# ================================================
+
 from faster_whisper import WhisperModel
+from huggingface_hub import snapshot_download
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +87,10 @@ def delete_model(model_name: str) -> dict:
 
     try:
         shutil.rmtree(model_dir)
+        # 表示名を整形（large-v3 → Large-v3）
+        display_name = "Large-v3" if model_name.lower() == "large-v3" else model_name
         logger.info(f"✅ モデル削除完了: {model_name}")
-        return {"success": True, "message": f"モデル {model_name} を削除しました"}
+        return {"success": True, "message": f"{display_name}モデルを削除しました"}
     except Exception as e:
         logger.error(f"❌ モデル削除失敗: {model_name} - {str(e)}")
         return {"success": False, "message": f"削除失敗: {str(e)}"}
@@ -138,13 +148,124 @@ class TranscriptionService:
         logger.info(f"モデル '{model_name}' をロード中...")
         start_time = time.time()
 
-        # faster-whisperが自動でダウンロード
-        self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        try:
+            # faster-whisperが自動でダウンロード
+            self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
 
-        self.current_model_name = model_name
-        elapsed = time.time() - start_time
+            self.current_model_name = model_name
+            elapsed = time.time() - start_time
 
-        logger.info(f"✅ モデルロード完了: {model_name} ({elapsed:.1f}秒)")
+            logger.info(f"✅ モデルロード完了: {model_name} ({elapsed:.1f}秒)")
+
+        except PermissionError as e:
+            error_str = str(e)
+            logger.error(f"❌ 権限エラー: {error_str}")
+
+            # WinError 1314対策: シンボリックリンクエラーの場合
+            if "1314" in error_str or "symlink" in error_str.lower():
+                logger.warning("⚠️ WinError 1314を検出: キャッシュクリーンアップを試行")
+
+                # 部分的なダウンロードファイルを削除
+                cache_path = Path.home() / ".cache" / "huggingface" / "hub"
+                if cache_path.exists():
+                    for tmp_file in cache_path.glob("**/*.tmp"):
+                        try:
+                            tmp_file.unlink()
+                            logger.info(f"削除: {tmp_file}")
+                        except Exception:
+                            pass
+                    for lock_file in cache_path.glob("**/*.lock"):
+                        try:
+                            lock_file.unlink()
+                            logger.info(f"削除: {lock_file}")
+                        except Exception:
+                            pass
+
+                # 再試行1: 通常の方法でもう一度試す
+                logger.info("🔄 モデルダウンロードを再試行（1回目）...")
+                try:
+                    self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
+                    self.current_model_name = model_name
+                    elapsed = time.time() - start_time
+                    logger.info(f"✅ モデルロード完了（再試行成功）: {model_name} ({elapsed:.1f}秒)")
+                    return  # 成功したら処理を抜ける
+                except PermissionError:
+                    # 再試行1でも失敗した場合、fallbackに進む
+                    logger.warning("⚠️ 再試行1でも失敗: symlinkを使わないダウンロードに切り替え")
+
+                    # 再試行2: snapshot_downloadでsymlinkを完全に無効化してダウンロード
+                    try:
+                        cache_dir = Path.home() / ".cache" / "huggingface"
+                        # symlink/hardlinkを使わない専用ディレクトリ
+                        fallback_dir = cache_dir / "no_symlink_models" / f"faster-whisper-{model_name}"
+
+                        logger.info(f"🔄 Fallback: symlink無効モードでダウンロード開始...")
+                        logger.info(f"   キャッシュディレクトリ: {cache_dir}")
+                        logger.info(f"   実体ファイル展開先: {fallback_dir}")
+
+                        # 中途半端なダウンロードが残っている場合に備えて削除
+                        if fallback_dir.exists():
+                            logger.info(f"   既存のfallbackディレクトリを削除: {fallback_dir}")
+                            shutil.rmtree(fallback_dir)
+
+                        # ディレクトリ作成
+                        fallback_dir.mkdir(parents=True, exist_ok=True)
+                        logger.info(f"   fallbackディレクトリを作成: {fallback_dir}")
+
+                        # snapshot_downloadでモデルをダウンロード（symlink/hardlink完全無効）
+                        logger.info(f"   モデルダウンロード中（symlink/hardlink無効、実体ファイルコピー）...")
+                        model_path = snapshot_download(
+                            repo_id=f"Systran/faster-whisper-{model_name}",
+                            cache_dir=str(cache_dir),
+                            local_dir=str(fallback_dir),  # 明示的にlocal_dirを指定
+                            local_dir_use_symlinks=False,  # symlink/hardlink完全無効
+                            resume_download=True,
+                        )
+
+                        logger.info(f"   ✅ ダウンロード完了: {model_path}")
+                        logger.info(f"   実体ファイルが展開されました: {fallback_dir}")
+                        logger.info(f"🔄 Fallbackでダウンロード完了、モデルをロード中...")
+
+                        # fallback_dirからモデルをロード
+                        self.model = WhisperModel(
+                            str(fallback_dir),
+                            device="cpu",
+                            compute_type="int8"
+                        )
+                        self.current_model_name = model_name
+                        elapsed = time.time() - start_time
+                        logger.info(f"✅ モデルロード完了（Fallback成功、symlink無効モード）: {model_name} ({elapsed:.1f}秒)")
+                        return  # 成功したら処理を抜ける
+
+                    except Exception as fallback_error:
+                        logger.error(f"❌ Fallbackでも失敗: {fallback_error}")
+                        error_msg = (
+                            "モデルのダウンロードに失敗しました（WinError 1314）。\n\n"
+                            "symlink/hardlinkを使わない実体ファイルコピーでも失敗しました。\n"
+                            "以下を確認してください:\n"
+                            "1. インターネット接続\n"
+                            "2. ディスク容量（約3GB必要）\n"
+                            "3. セキュリティソフトの設定\n"
+                            "4. ディスクの書き込み権限\n\n"
+                            f"キャッシュフォルダ: {cache_dir}\n"
+                            f"Fallback展開先: {fallback_dir}\n\n"
+                            f"エラー詳細: {fallback_error}"
+                        )
+                        raise PermissionError(error_msg) from fallback_error
+            else:
+                error_msg = (
+                    "モデルのダウンロードに失敗しました。\n\n"
+                    "以下を確認してください:\n"
+                    "1. インターネット接続\n"
+                    "2. ディスク容量（約3GB必要）\n"
+                    "3. セキュリティソフトの設定\n\n"
+                    f"キャッシュフォルダ: {Path.home() / '.cache' / 'huggingface'}"
+                )
+                raise PermissionError(error_msg) from e
+
+        except Exception as e:
+            logger.error(f"❌ モデルロードエラー: {e}", exc_info=True)
+            raise
 
     def transcribe(
         self,
