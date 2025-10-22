@@ -6,7 +6,7 @@
 
 - **バージョン**:
   - Mac版: v1.1.1
-  - Windows版: v1.1.0
+  - Windows版: v1.1.1
 - **開発元**: [公立はこだて未来大学 辻研究室](https://tsuji-lab.net)
 - **対応プラットフォーム**: macOS、Windows
 - **文字起こしエンジン**: faster-whisper
@@ -215,8 +215,12 @@ tail -f ~/.gaq/logs/app.log
   - v1.1.1: 起動不具合修正 + Python 3.12固定ビルド
 
 ### Windows版
-- **ポータブルZIP版**: `GaQ_Transcriber_Windows_v1.1.0_Portable.zip` (138MB)
-- **インストーラ版**: `GaQ_Transcriber_Windows_v1.1.0_Setup.exe` (95MB)
+
+- **ポータブルZIP版**: `GaQ_Transcriber_Windows_v1.1.1_Portable.zip` (約139 MB)
+  - SHA256: `C0A423E91310702AAAFCE6896F63C493A05249C20A01CEC39401AA6D796E48CB`
+- **インストーラ版**: `GaQ_Transcriber_Windows_v1.1.1_Setup.exe` (約96 MB)
+  - SHA256: `09B4A7E572B5944A6A709FCFB333F5D33FA50DA4298CDC294A7E855B5B021F91`
+- v1.1.1: クリップボードコピー機能の修正（Windows API型定義追加）
 
 ## ディレクトリ構成
 

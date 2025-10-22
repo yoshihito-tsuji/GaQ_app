@@ -1,5 +1,87 @@
 # GaQ Offline Transcriber - 開発履歴
 
+## 2025-10-22: Windows版 v1.1.1リリース（クリップボード機能修正完了）
+
+### リリース情報
+
+**バージョン**: v1.1.1
+**リリース日**: 2025-10-22
+**プラットフォーム**: Windows 10/11 (64bit)
+**配布形式**:
+- ポータブルZIP版: `GaQ_Transcriber_Windows_v1.1.1_Portable.zip` (約139 MB / 146,205,428 bytes)
+- インストーラ版: `GaQ_Transcriber_Windows_v1.1.1_Setup.exe` (約96 MB / 100,598,117 bytes)
+
+**チェックサム**:
+- ZIP: `SHA256: C0A423E91310702AAAFCE6896F63C493A05249C20A01CEC39401AA6D796E48CB`
+- Setup.exe: `SHA256: 09B4A7E572B5944A6A709FCFB333F5D33FA50DA4298CDC294A7E855B5B021F91`
+
+### 作業概要
+- **作業時間**: 2025-10-22 約2時間
+- **担当**: Claude Code + Codex（技術コンサルティング）
+- **ステータス**: ✅ 実装完了、テスト完了、リリース準備中
+
+### 修正内容
+
+#### クリップボードコピー機能の修正
+
+**問題**: Windows版v1.1.0でクリップボードコピー時に「メモリロックエラー」が発生
+
+**根本原因**:
+- ctypesでWindows APIを呼び出す際、明示的な型定義（argtypes/restype）がないと、デフォルトで`c_int`（32bit整数）として扱われる
+- `GlobalLock`の戻り値は64bitポインタ（8バイト）だが、型定義なしでは`c_int`（4バイト）として解釈される
+- 64bit環境で戻り値が切り捨てられ、0（NULL）と誤判定される
+- 結果として「メモリロックエラー」が発生
+
+**解決策**: Windows API の全関数に明示的な型定義を追加
+```python
+# Windows API の型定義
+kernel32 = ctypes.windll.kernel32
+user32 = ctypes.windll.user32
+
+kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+kernel32.GlobalAlloc.restype = ctypes.c_void_p
+
+kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+kernel32.GlobalLock.restype = ctypes.c_void_p  # ← 重要
+
+kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+kernel32.GlobalUnlock.restype = ctypes.c_bool
+
+# ... その他のAPI定義
+```
+
+**テスト結果**: ✅ 全機能正常動作
+- Mediumモデル: 文字起こし、コピー、保存 - すべて成功
+- Large-v3モデル: 文字起こし、コピー、保存 - すべて成功
+
+### ビルド情報
+
+**環境**:
+- Python: 3.12.10
+- PyInstaller: 6.16.0
+- OS: Windows 11
+
+**成果物**:
+- EXE: `GaQ_Transcriber.exe` (10,844,768 bytes)
+- タイムスタンプ: 2025/10/22 11:47:12
+
+### 変更ファイル
+- [release/windows/src/main_app.py](../release/windows/src/main_app.py): ctypes Windows API型定義追加（296-406行）
+
+### 詳細ドキュメント
+- **開発ログ**: [20251022_windows_v1.1.1_preparation.md](development/20251022_windows_v1.1.1_preparation.md)
+- **テスト結果**: [20251022_windows_test_results.md](development/20251022_windows_test_results.md)
+
+### 技術的教訓
+
+ctypesでWindows APIを使用する際の必須事項:
+1. すべての関数に対して`argtypes`と`restype`を明示的に定義する
+2. 特にポインタを返す関数では`c_void_p`を使用
+3. 64bit環境では型定義の欠如が深刻なバグを引き起こす
+4. PyInstallerでパッケージ化する場合も同様に必要
+
+---
+
 ## 2025-10-21: v1.1.1リリース（フェーズ1改善完了）
 
 ### リリース情報

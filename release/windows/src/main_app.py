@@ -4,7 +4,6 @@ pywebview + FastAPI によるオフライン文字起こしアプリ
 """
 
 import atexit
-import fcntl
 import json
 import logging
 import multiprocessing
@@ -22,8 +21,21 @@ import webview
 
 from config import APP_VERSION
 
-# ロックファイルのパス
-LOCK_FILE = "/tmp/gaq_transcriber.lock"
+# OS判定
+IS_WINDOWS = os.name == "nt"
+
+# OS別のファイルロックモジュールをインポート
+if IS_WINDOWS:
+    import msvcrt
+else:
+    import fcntl
+
+# ロックファイルのパス（OS別）
+if IS_WINDOWS:
+    LOCK_FILE = Path(os.environ.get("TEMP", Path.home())) / "gaq_transcriber.lock"
+else:
+    LOCK_FILE = "/tmp/gaq_transcriber.lock"
+
 lock_file_handle = None
 
 # ログディレクトリ
@@ -63,10 +75,24 @@ def acquire_single_instance_lock():
         # ロックファイルを開く（存在しなければ作成）
         lock_file_handle = open(LOCK_FILE, 'w')
 
-        # 非ブロッキングで排他ロックを試みる
-        fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if IS_WINDOWS:
+            # Windows: msvcrtを使用した排他ロック
+            try:
+                msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError:
+                # ロック失敗 = 既に別のインスタンスが起動中
+                logger.warning(f"⚠️ 別のインスタンスが既に起動しています (ロックファイル: {LOCK_FILE})")
+                if lock_file_handle:
+                    lock_file_handle.close()
+                    lock_file_handle = None
+                return False
+        else:
+            # macOS/Linux: fcntlを使用した排他ロック
+            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
-        # ロック成功時、PIDを記録
+        # ロック成功時、PIDを記録（seek(0) → truncate()でゴミを残さない）
+        lock_file_handle.seek(0)
+        lock_file_handle.truncate()
         lock_file_handle.write(str(os.getpid()))
         lock_file_handle.flush()
 
@@ -96,7 +122,13 @@ def release_single_instance_lock():
 
     if lock_file_handle:
         try:
-            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
+            if IS_WINDOWS:
+                # Windows: msvcrtでロック解除
+                msvcrt.locking(lock_file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                # macOS/Linux: fcntlでロック解除
+                fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
+
             lock_file_handle.close()
             logger.info("🔓 単一インスタンスロック解放")
         except Exception as e:
@@ -107,14 +139,26 @@ def release_single_instance_lock():
 
 def show_already_running_dialog():
     """
-    既に起動中である旨をユーザーに通知（macOS用）
+    既に起動中である旨をユーザーに通知（OS別）
     """
     try:
-        # osascriptでダイアログ表示
-        script = '''
-        display alert "お知らせ" message "GaQ Offline Transcriber は既に起動しています。\\n\\n既存のウィンドウを確認してください。" as informational buttons {"OK"} default button "OK"
-        '''
-        subprocess.run(['osascript', '-e', script], check=False, timeout=5)
+        if IS_WINDOWS:
+            # Windows: ctypesでMessageBoxを表示
+            import ctypes
+            MB_OK = 0x0
+            MB_ICONINFORMATION = 0x40
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "GaQ Offline Transcriber は既に起動しています。\n\n既存のウィンドウを確認してください。",
+                "お知らせ",
+                MB_OK | MB_ICONINFORMATION
+            )
+        else:
+            # macOS: osascriptでダイアログ表示
+            script = '''
+            display alert "お知らせ" message "GaQ Offline Transcriber は既に起動しています。\\n\\n既存のウィンドウを確認してください。" as informational buttons {"OK"} default button "OK"
+            '''
+            subprocess.run(['osascript', '-e', script], check=False, timeout=5)
     except Exception as e:
         logger.error(f"ダイアログ表示エラー: {e}")
 
@@ -216,7 +260,7 @@ class Bridge:
 
     def copy_to_clipboard(self, text: str):
         """
-        文字列をクリップボードにコピー
+        文字列をクリップボードにコピー（OS別）
 
         Args:
             text: コピーする文字列
@@ -233,66 +277,191 @@ class Bridge:
                     "message": "コピーするテキストが空です"
                 }
 
-            # 方法: 一時ファイル経由でAppleScriptを使ってクリップボードにコピー
-            # 長いテキストをコマンドライン引数で渡すと制限を超えるため、
-            # 一時ファイルに書き込んでから、AppleScriptでファイルを読み込む
+            if IS_WINDOWS:
+                # Windows用に改行コードを整形（LF → CRLF）
+                text_windows = text.replace("\r\n", "\n").replace("\n", "\r\n")
 
-            import tempfile
-            import os
-
-            # 一時ファイルを作成してテキストを書き込み
-            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.txt') as tmp:
-                tmp.write(text)
-                tmp_path = tmp.name
-
-            logger.info(f"📝 一時ファイル作成: {tmp_path} ({len(text)}文字)")
-
-            try:
-                # AppleScriptでファイルを読み込んでクリップボードにセット
-                applescript = f'''
-                set theFile to POSIX file "{tmp_path}"
-                set fileRef to open for access theFile
-                set fileContents to read fileRef as «class utf8»
-                close access fileRef
-                set the clipboard to fileContents
-                '''
-
-                logger.info(f"🍎 AppleScriptでクリップボードにセット中...")
-
-                result = subprocess.run(
-                    ['osascript', '-e', applescript],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-
-                if result.returncode != 0:
-                    logger.error(f"❌ AppleScript失敗: {result.stderr}")
+                # Windows: win32clipboardを使用
+                try:
+                    import win32clipboard
+                    win32clipboard.OpenClipboard()
+                    win32clipboard.EmptyClipboard()
+                    win32clipboard.SetClipboardText(text_windows, win32clipboard.CF_UNICODETEXT)
+                    win32clipboard.CloseClipboard()
+                    logger.info(f"✅ Windowsクリップボードにコピーしました ({len(text)}文字)")
                     return {
-                        "success": False,
-                        "message": f"クリップボードへのコピーに失敗しました: {result.stderr}"
+                        "success": True,
+                        "message": "クリップボードにコピーしました"
+                    }
+                except ImportError:
+                    # win32clipboardが利用できない場合はctypesで代替（安全な実装）
+                    logger.warning("⚠️ win32clipboard not available, using ctypes fallback")
+                    import ctypes
+
+                    # 定数定義
+                    GMEM_MOVEABLE = 0x0002
+                    GMEM_ZEROINIT = 0x0040
+                    CF_UNICODETEXT = 13
+
+                    # Windows API の型定義
+                    kernel32 = ctypes.windll.kernel32
+                    user32 = ctypes.windll.user32
+
+                    kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+                    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+
+                    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+                    kernel32.GlobalLock.restype = ctypes.c_void_p
+
+                    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+                    kernel32.GlobalUnlock.restype = ctypes.c_bool
+
+                    kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+                    kernel32.GlobalFree.restype = ctypes.c_void_p
+
+                    user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+                    user32.OpenClipboard.restype = ctypes.c_bool
+
+                    user32.EmptyClipboard.argtypes = []
+                    user32.EmptyClipboard.restype = ctypes.c_bool
+
+                    user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+                    user32.SetClipboardData.restype = ctypes.c_void_p
+
+                    user32.CloseClipboard.argtypes = []
+                    user32.CloseClipboard.restype = ctypes.c_bool
+
+                    handle = None
+                    try:
+                        # Unicode文字列バッファを作成（null終端を含む）
+                        buffer = ctypes.create_unicode_buffer(text_windows + "\0")
+                        size = ctypes.sizeof(buffer)
+
+                        # グローバルメモリを割り当て
+                        handle = kernel32.GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, size)
+                        if not handle:
+                            logger.error("GlobalAlloc failed")
+                            return {
+                                "success": False,
+                                "message": "クリップボードへのコピーに失敗しました（メモリ割り当てエラー）"
+                            }
+
+                        # メモリをロックしてデータをコピー
+                        locked = kernel32.GlobalLock(handle)
+                        if not locked:
+                            kernel32.GlobalFree(handle)
+                            logger.error("GlobalLock failed")
+                            return {
+                                "success": False,
+                                "message": "クリップボードへのコピーに失敗しました（メモリロックエラー）"
+                            }
+
+                        ctypes.memmove(locked, ctypes.addressof(buffer), size)
+                        kernel32.GlobalUnlock(handle)
+
+                        # クリップボードを開いてデータをセット
+                        if not user32.OpenClipboard(0):
+                            kernel32.GlobalFree(handle)
+                            logger.error("OpenClipboard failed")
+                            return {
+                                "success": False,
+                                "message": "クリップボードへのコピーに失敗しました（クリップボードオープンエラー）"
+                            }
+
+                        user32.EmptyClipboard()
+
+                        if not user32.SetClipboardData(CF_UNICODETEXT, handle):
+                            user32.CloseClipboard()
+                            kernel32.GlobalFree(handle)
+                            logger.error("SetClipboardData failed")
+                            return {
+                                "success": False,
+                                "message": "クリップボードへのコピーに失敗しました（データセットエラー）"
+                            }
+
+                        user32.CloseClipboard()
+
+                        # 成功時はhandleの所有権がクリップボードに移るため、GlobalFreeは不要
+                        logger.info(f"✅ Windowsクリップボードにコピーしました (ctypesフォールバック) ({len(text)}文字)")
+                        return {
+                            "success": True,
+                            "message": "クリップボードにコピーしました"
+                        }
+
+                    except Exception as e:
+                        # エラー時はメモリを解放
+                        if handle:
+                            try:
+                                kernel32.GlobalFree(handle)
+                            except:
+                                pass
+                        try:
+                            user32.CloseClipboard()
+                        except:
+                            pass
+                        logger.exception(f"ctypesクリップボードコピーエラー: {e}")
+                        return {
+                            "success": False,
+                            "message": f"クリップボードへのコピーに失敗しました: {str(e)}"
+                        }
+            else:
+                # macOS: 一時ファイル経由でAppleScriptを使用
+                import tempfile
+
+                # 一時ファイルを作成してテキストを書き込み
+                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.txt') as tmp:
+                    tmp.write(text)
+                    tmp_path = tmp.name
+
+                logger.info(f"📝 一時ファイル作成: {tmp_path} ({len(text)}文字)")
+
+                try:
+                    # AppleScriptでファイルを読み込んでクリップボードにセット
+                    applescript = f'''
+                    set theFile to POSIX file "{tmp_path}"
+                    set fileRef to open for access theFile
+                    set fileContents to read fileRef as «class utf8»
+                    close access fileRef
+                    set the clipboard to fileContents
+                    '''
+
+                    logger.info(f"🍎 AppleScriptでクリップボードにセット中...")
+
+                    result = subprocess.run(
+                        ['osascript', '-e', applescript],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+
+                    if result.returncode != 0:
+                        logger.error(f"AppleScript失敗: {result.stderr}")
+                        return {
+                            "success": False,
+                            "message": f"クリップボードへのコピーに失敗しました: {result.stderr}"
+                        }
+
+                    logger.info(f"✅ AppleScriptでクリップボードにコピーしました ({len(text)}文字)")
+
+                    return {
+                        "success": True,
+                        "message": "クリップボードにコピーしました"
                     }
 
-                logger.info(f"✅ AppleScriptでクリップボードにコピーしました ({len(text)}文字)")
+                finally:
+                    # 一時ファイルを削除
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                        logger.debug(f"🗑️ 一時ファイル削除: {tmp_path}")
 
-                return {
-                    "success": True,
-                    "message": "クリップボードにコピーしました"
-                }
-
-            finally:
-                # 一時ファイルを削除
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                    logger.debug(f"🗑️ 一時ファイル削除: {tmp_path}")
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ クリップボードコピーエラー: {e}", exc_info=True)
+            logger.error(f"クリップボードコピーエラー: {e}", exc_info=True)
             return {
                 "success": False,
                 "message": "クリップボードへのコピーに失敗しました"
             }
         except Exception as e:
-            logger.error(f"❌ クリップボードコピーエラー: {e}", exc_info=True)
+            logger.error(f"クリップボードコピーエラー: {e}", exc_info=True)
             return {
                 "success": False,
                 "message": f"クリップボードへのコピーに失敗しました: {str(e)}"
@@ -352,15 +521,33 @@ class Bridge:
             except ValueError:
                 timestamp_dt = datetime.now()
 
-            # ファイル保存ダイアログを表示
+            # ファイル保存ダイアログを表示（pywebview 6.1+対応）
             file_types = ('Text Files (*.txt)', )
+
+            # pywebview 6.1以降ではFileDialog Enumを使用、それ以前はSAVE_DIALOGを使用
+            try:
+                # pywebview 6.1+
+                from webview import FileDialog
+                dialog_type = FileDialog.SAVE
+            except ImportError:
+                # pywebview < 6.1 (後方互換)
+                dialog_type = webview.SAVE_DIALOG
+
             save_path = webview.windows[0].create_file_dialog(
-                webview.SAVE_DIALOG,
+                dialog_type,
                 save_filename=f'文字起こし結果_{timestamp_dt.strftime("%Y%m%d_%H%M%S")}.txt',
                 file_types=file_types
             )
 
-            # ユーザーがキャンセルした場合
+            # create_file_dialogの戻り値がタプル/リストの場合は先頭要素を採用
+            if isinstance(save_path, (tuple, list)):
+                save_path = save_path[0] if save_path else None
+
+            # Pathインスタンスの場合はstr()へ変換
+            if save_path and hasattr(save_path, '__fspath__'):
+                save_path = str(save_path)
+
+            # ユーザーがキャンセルした場合、または空文字/Noneの場合
             if not save_path:
                 return {
                     "success": False,
@@ -751,8 +938,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     # ★第1段階: 終了確認ダイアログの実装
     def on_closing():
         """
-        ウィンドウ終了時の確認ダイアログ
-        アプリの雰囲気に合わせたAppleScriptダイアログ
+        ウィンドウ終了時の確認ダイアログ（OS別）
 
         Returns:
             bool: True=終了を許可, False=終了をキャンセル
@@ -760,32 +946,56 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         try:
             logger.info("🚪 [Closing] ウィンドウ終了要求を検知")
 
-            # AppleScriptダイアログ（アイコンを "note" にして柔らかい印象に）
-            script = '''
-            display dialog "処理中のタスクがある場合は中断されます。
+            if IS_WINDOWS:
+                # Windows: ctypesでMessageBoxを表示
+                import ctypes
+                MB_YESNO = 0x4
+                MB_ICONQUESTION = 0x20
+                MB_DEFBUTTON2 = 0x100
+                IDYES = 6
+
+                result = ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "処理中のタスクがある場合は中断されます。\n\nアプリケーションを終了してもよろしいですか？",
+                    "GaQ Offline Transcriber - 終了確認",
+                    MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2
+                )
+
+                if result == IDYES:
+                    logger.info("✅ [Closing] ユーザーが終了を承認")
+                    # ★第2段階: FastAPIサーバープロセスを終了
+                    shutdown_server()
+                    return True
+                else:
+                    logger.info("❌ [Closing] ユーザーが終了をキャンセル")
+                    return False
+            else:
+                # macOS: AppleScriptダイアログ（アイコンを "note" にして柔らかい印象に）
+                script = '''
+                display dialog "処理中のタスクがある場合は中断されます。
 
 アプリケーションを終了してもよろしいですか？" ¬
-                with title "GaQ Offline Transcriber - 終了確認" ¬
-                buttons {"キャンセル", "終了"} ¬
-                default button "終了" ¬
-                cancel button "キャンセル" ¬
-                with icon note
-            '''
+                    with title "GaQ Offline Transcriber - 終了確認" ¬
+                    buttons {"キャンセル", "終了"} ¬
+                    default button "終了" ¬
+                    cancel button "キャンセル" ¬
+                    with icon note
+                '''
 
-            result = subprocess.run(
-                ['osascript', '-e', script],
-                capture_output=True,
-                text=True
-            )
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True,
+                    text=True
+                )
 
-            if result.returncode == 0:
-                logger.info("✅ [Closing] ユーザーが終了を承認")
-                # ★第2段階: FastAPIサーバープロセスを終了
-                shutdown_server()
-                return True
-            else:
-                logger.info("❌ [Closing] ユーザーが終了をキャンセル")
-                return False
+                if result.returncode == 0:
+                    logger.info("✅ [Closing] ユーザーが終了を承認")
+                    # ★第2段階: FastAPIサーバープロセスを終了
+                    shutdown_server()
+                    return True
+                else:
+                    logger.info("❌ [Closing] ユーザーが終了をキャンセル")
+                    return False
 
         except Exception as e:
             logger.error(f"❌ [Closing] 終了確認ダイアログエラー: {e}", exc_info=True)
