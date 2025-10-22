@@ -208,6 +208,56 @@ Codexとして、以下の検討を推奨します:
 
 ---
 
+## 💼 将来タスク: MSIX化準備
+
+### 背景
+現在のWindows版配布では、Inno Setup形式のSetup.exe（未署名）を提供していますが、SmartScreen警告が表示されるため、ユーザビリティに課題があります。
+
+### 目標
+- **MSIX形式への移行**: Windows 10/11の標準パッケージ形式であるMSIXへの移行
+- **コード署名の実施**: SmartScreen警告を回避し、信頼性の高い配布を実現
+
+### 準備タスク
+
+#### 1. コード署名証明書の取得
+- **検討対象**:
+  - EV証明書（Extended Validation）: 即座にSmartScreen信頼を獲得
+  - Standard証明書: 時間をかけて信頼を構築
+- **候補プロバイダー**: DigiCert, Sectigo, GlobalSign等
+- **費用**: 年間数万円～十数万円（EV証明書）
+
+#### 2. MSIXパッケージング手順の確立
+- **PyInstallerビルド成果物の検証**: 現在の`dist/GaQ_Transcriber/`構造がMSIX化に適しているか確認
+- **アプリケーションマニフェストの作成**: `AppxManifest.xml`の作成
+  - アプリケーション名、バージョン、発行者情報
+  - 必要な権限（ファイルシステムアクセス、クリップボードアクセス等）
+  - 実行ファイルのエントリポイント
+- **MSIXパッケージの生成**: `MakeAppx.exe`を使用したパッケージ化
+- **署名付きMSIXの作成**: `SignTool.exe`を使用した署名
+
+#### 3. テスト・検証
+- **動作確認**: MSIXインストール後の動作テスト
+  - 文字起こし機能
+  - クリップボードコピー機能
+  - ファイル保存機能
+  - faster-whisperモデルのダウンロード
+- **アンインストールテスト**: クリーンな削除が可能か
+- **署名検証**: SmartScreen警告が表示されないことを確認
+
+#### 4. Microsoft Storeへの登録（任意）
+- **メリット**: 自動更新、信頼性向上、配布の簡素化
+- **検討事項**: 登録料（初回$19 + 年間費用）、審査プロセス
+
+### 優先度
+- **優先度**: 中（v1.1.1リリース後の次期フェーズ）
+- **前提条件**: GitHub Actions導入（ビルド自動化）の後に実施推奨
+
+### 参考ドキュメント
+- Microsoft Docs: [MSIX パッケージの作成](https://docs.microsoft.com/ja-jp/windows/msix/package/create-app-package)
+- Microsoft Docs: [コード署名](https://docs.microsoft.com/ja-jp/windows/msix/package/sign-app-package-using-signtool)
+
+---
+
 ## 🎉 最終判定
 
 **リリース可否**: ✅ **リリース可能**

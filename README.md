@@ -216,10 +216,12 @@ tail -f ~/.gaq/logs/app.log
 
 ### Windows版
 
-- **ポータブルZIP版**: `GaQ_Transcriber_Windows_v1.1.1_Portable.zip` (約139 MB)
+- **ポータブルZIP版（推奨）**: `GaQ_Transcriber_Windows_v1.1.1_Portable.zip` (約139 MB)
   - SHA256: `C0A423E91310702AAAFCE6896F63C493A05249C20A01CEC39401AA6D796E48CB`
-- **インストーラ版**: `GaQ_Transcriber_Windows_v1.1.1_Setup.exe` (約96 MB)
-  - SHA256: `09B4A7E572B5944A6A709FCFB333F5D33FA50DA4298CDC294A7E855B5B021F91`
+  - ZIPを解凍して `GaQ_Transcriber.exe` を実行
+- **インストーラ版**: 一時提供停止
+  - SmartScreen警告回避のため、コード署名付きMSIX化を準備中
+  - 従来のSetup.exe (SHA256: `09B4A7E572B5944A6A709FCFB333F5D33FA50DA4298CDC294A7E855B5B021F91`) は参考として保持
 - v1.1.1: クリップボードコピー機能の修正（Windows API型定義追加）
 
 ## ディレクトリ構成
@@ -795,6 +797,36 @@ pbpaste | head -c 100
 
 ---
 
-**最終更新**: 2025-10-19
-**バージョン**: Mac v1.1.1 / Windows v1.1.0
+## 将来の課題
+
+### Windows版配布の改善
+
+現在、Windows版はポータブルZIP版のみ提供しています。インストーラ版については、以下の対応を準備中です。
+
+#### MSIX化とコード署名対応
+
+- **課題**: 現在のInno Setup形式のSetup.exeは未署名のため、SmartScreen警告が表示される
+- **目標**: MSIX形式への移行とコード署名の実施
+- **準備タスク**:
+  - コード署名証明書の取得（EV証明書またはStandard証明書の検討）
+  - MSIXパッケージング手順の検証
+    - PyInstallerビルド成果物のMSIX化
+    - アプリケーションマニフェストの作成
+    - 署名付きMSIXパッケージの生成手順確立
+  - Microsoft Storeへの登録検討（任意）
+  - 署名付き配布物のテスト・検証
+
+#### その他の改善項目
+
+- GitHub Actionsによるビルド・テストの自動化
+  - Phase 1: ビルドの自動化
+  - Phase 2: 基本動作確認（インポートテスト、バックエンド起動テスト）
+  - Phase 3: E2Eテスト（将来的な課題）
+
+詳細は [docs/development/20251022_codex_report_v1.1.1.md](docs/development/20251022_codex_report_v1.1.1.md) を参照してください。
+
+---
+
+**最終更新**: 2025-10-22
+**バージョン**: Mac v1.1.1 / Windows v1.1.1
 **ステータス**: リリース済み
