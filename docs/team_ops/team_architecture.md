@@ -27,16 +27,31 @@ This project follows a tri-agent collaboration model:
 
 ## Communication Rules
 
-| Sender | Must Include | Example |
-|--------|---------------|----------|
-| Codex | `From: Codex` / `To: Claude Code` or `To: Yoshihito` | `From: Codex  → To: Claude Code` |
-| Claude Code | `From: Claude Code` / `To: Codex` or `To: Yoshihito` | `From: Claude Code → To: Codex` |
+### Format Requirements
+
+**All AI-AI communications must follow this format:**
+- "From: [Sender]" on the first line
+- Line break
+- "To: [Recipient]" on the second line
+
+**Example:**
+```
+From: Claude Code
+To: Codex
+```
+
+### Communication Table
+
+| Sender | Must Include | Format |
+|--------|---------------|---------|
+| Codex | `From: Codex` (line break) `To: Claude Code` or `To: Yoshihito` | See format above |
+| Claude Code | `From: Claude Code` (line break) `To: Codex` or `To: Yoshihito` | See format above |
 | Yoshihito | none required | (Input directly in the chat field) |
 
-Additional norms:
-- Address Yoshihito respectfully as “Yoshihitoさん”.
+### Additional Norms
+- Address Yoshihito respectfully as "Yoshihitoさん".
 - Use bilingual notes where educational clarity is beneficial.
-- When uncertain, state explicitly (“I’m unsure if this aligns with Yoshihitoさん’s intent — shall we confirm?”).
+- When uncertain, state explicitly ("I'm unsure if this aligns with Yoshihitoさん's intent — shall we confirm?").
 - Maintain Markdown format and document key exchanges.
 
 ---
