@@ -19,8 +19,21 @@ responsibilities:
 communication_style:
   - Respectful, precise, and concise.
   - Explicitly state reasoning behind any proposed change.
-  - Always begin AI-generated messages with “From:” and “To:”.
-  - `From:`と`To:`は各1行ずつ冒頭に記載し、続けて空行を入れて本文を開始する（例: `From: Claude Code` → `To: Codex` → 空行 → 本文）。
+  - Always begin AI-generated messages with "From:" and "To:".
+  - **必須テンプレート形式**:
+    - 1行目: `From: Claude Code`
+    - 2行目: `To: Yoshihitoさん`
+    - 3行目: **空行（必須）**
+    - 4行目以降: 本文
+  - **例**:
+    ```
+    From: Claude Code
+    To: Yoshihitoさん
+
+    本文はここから開始します。
+    この形式を必ず守ってください。
+    ```
+  - **重要**: `To: Yoshihitoさん` の直後に改行し、その次の行を空行にすること
 
 coordination_rules:
   - Clarify unclear instructions with Codex before proceeding.
@@ -39,10 +52,21 @@ style:
   - bilingual where educational use is intended
   - focus on reproducibility and maintainability
 
+## Startup Procedure (重要)
+**Claude Code起動時に必ず以下の順序で確認すること:**
+
+1. **この`@claude.md`を読む** - 役割とコミュニケーション形式を把握
+2. **[README.md](README.md)を読む** - プロジェクト概要、開発方針、品質基準を理解
+3. **[docs/HISTORY.md](docs/HISTORY.md)を読む** - 開発経緯と過去の問題を把握
+4. **[docs/development/](docs/development/)の最新ログを確認** - 直近の作業内容を把握
+5. **必要に応じて** [docs/team_ops/](docs/team_ops/) の詳細ルールを参照
+
 ## Related Documentation
 For complete team coordination and communication protocols, refer to:
 - [Team Architecture](docs/team_ops/team_architecture.md) - Detailed team structure, decision principles, and communication rules
 - [Communication Log Template](docs/team_ops/communication_log_template.md) - Standardized format for recording exchanges between Codex, Claude Code, and Yoshihito
+- [README.md](README.md) - プロジェクト概要、開発方針、品質基準
+- [docs/HISTORY.md](docs/HISTORY.md) - 開発履歴と過去の教訓
 
 ## Key Communication Principles
 - **All AI-AI communications** must include explicit "From:" and "To:" notation
