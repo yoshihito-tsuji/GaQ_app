@@ -56,10 +56,12 @@ style:
 **Claude Code起動時に必ず以下の順序で確認すること:**
 
 1. **この`@claude.md`を読む** - 役割とコミュニケーション形式を把握
-2. **[README.md](README.md)を読む** - プロジェクト概要、開発方針、品質基準を理解
-3. **[docs/HISTORY.md](docs/HISTORY.md)を読む** - 開発経緯と過去の問題を把握
-4. **[docs/development/](docs/development/)の最新ログを確認** - 直近の作業内容を把握
-5. **必要に応じて** [docs/team_ops/](docs/team_ops/) の詳細ルールを参照
+2. **README関連資料を精読する（必須）**:
+   - **[README.md](README.md)** - プロジェクト概要、開発方針、品質基準を理解
+   - **[docs/HISTORY.md](docs/HISTORY.md)** - 開発経緯と過去の問題を把握
+   - **[docs/development/](docs/development/)の最新ログ** - 直近の作業内容を把握
+   - **必要に応じて** [docs/team_ops/](docs/team_ops/) の詳細ルールを参照
+3. **関連するプロジェクトドキュメントを確認** - 作業内容に応じて参照
 
 ## Related Documentation
 For complete team coordination and communication protocols, refer to:
