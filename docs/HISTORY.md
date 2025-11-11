@@ -1,5 +1,108 @@
 # GaQ Offline Transcriber - 開発履歴
 
+## 2025-11-11: プラットフォーム別リリースタグへの移行（v1.1.1 → v1.1.1-mac）
+
+### 作業概要
+- **作業時間**: 2025-11-11 約30分
+- **担当**: Claude Code + Yoshihitoさん
+- **ステータス**: ✅ 完了
+
+### 実施内容
+
+#### リリースタグ構造の変更
+
+**変更前**:
+```
+v1.1.1  # Mac版のみ（混乱の原因）
+```
+
+**変更後**:
+```
+v1.1.1-mac  # Mac版専用
+v1.1.1-win  # Windows版専用（今後追加予定）
+```
+
+#### 変更理由（Codex推奨）
+
+1. **明確な分離**: 各プラットフォームのリリースが独立して管理できる
+2. **柔軟性**: Mac版とWindows版を異なるタイミングでリリース可能
+3. **ユーザビリティ**: ユーザーが自分のプラットフォームを選びやすい
+4. **統計管理**: ダウンロード統計スクリプトも対応しやすい
+5. **早期実施**: 公開直後（ダウンロード4件のみ）のため影響最小
+
+#### 実施した作業
+
+1. **ダウンロード数の記録**
+   - 削除前のダウンロード数: **合計4件**
+     - GaQ_Transcriber_v1.1.1_mac.dmg: 3件
+     - GaQ_Transcriber_v1.1.1_mac.dmg.sha256: 1件
+   - 記録保存: `/tmp/v1.1.1_stats_before_migration.json`
+
+2. **リリースの再構成**
+   - 既存の `v1.1.1` を削除
+   - `v1.1.1-mac` として再作成
+   - リリースURL: https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1-mac
+
+3. **ダウンロード統計スクリプト更新**
+   - `scripts/check_download_stats.py`: プロジェクト設定を更新
+     ```python
+     PROJECTS = {
+         "gaq-mac": "GaQ_app",
+         "gaq-win": "GaQ_app",  # Windows版用に予約
+         "popup": "PoPuP"
+     }
+     RELEASES = {
+         "gaq-mac": "v1.1.1-mac",
+         "gaq-win": "",  # Windows版リリース後に設定
+         "popup": ""
+     }
+     ```
+   - `scripts/check_download_stats.sh`: 同様に更新
+
+4. **ドキュメント更新**
+   - `README.md`: リリースURLとダウンロードリンクを v1.1.1-mac に更新
+   - `release/mac/release_notes_v1.1.1.md`: 同様に更新
+
+### 今後の運用
+
+#### バージョニング規則
+- Mac版: `v{major}.{minor}.{patch}-mac`
+- Windows版: `v{major}.{minor}.{patch}-win`
+
+#### 例
+```
+v1.1.1-mac   # 現在
+v1.1.1-win   # 今後追加予定
+v1.2.0-mac   # 次期バージョン
+v1.2.0-win   # 次期バージョン
+```
+
+### 注意事項
+
+**アセットの手動アップロード必要**
+
+現在、`v1.1.1-mac` リリースは作成されていますが、アセット（DMGファイル）がまだアップロードされていません。
+
+**対応方法**:
+1. [リリースページ](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1-mac) にアクセス
+2. "Edit release" をクリック
+3. DMGファイルとSHA256ハッシュファイルをドラッグ&ドロップ
+4. "Update release" をクリック
+
+**必要なファイル**:
+- `GaQ_Transcriber_v1.1.1_mac.dmg` (77.5MB)
+- `GaQ_Transcriber_v1.1.1_mac.dmg.sha256` (97 Bytes)
+
+### 関連ファイル
+
+**更新したファイル**:
+- [README.md](../../README.md) - リリースURLを v1.1.1-mac に更新
+- [release/mac/release_notes_v1.1.1.md](../../release/mac/release_notes_v1.1.1.md) - リンク更新
+- [scripts/check_download_stats.py](../../scripts/check_download_stats.py) - プラットフォーム別設定
+- [scripts/check_download_stats.sh](../../scripts/check_download_stats.sh) - プラットフォーム別設定
+
+---
+
 ## 2025-11-11: Mac版v1.1.1 GitHub Release正式公開 & ダウンロード統計スクリプト作成
 
 ### 作業概要
@@ -10,15 +113,15 @@
 ### 公開内容
 
 #### GitHub Release
-- **リリースページ**: <https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1>
-- **タグ**: v1.1.1
+- **リリースページ**: <https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1-mac>
+- **タグ**: v1.1.1-mac（プラットフォーム別タグへ移行）
 - **ステータス**: 正式公開（Draft解除完了）
 
 #### 配布アセット
 1. **DMGファイル**: `GaQ_Transcriber_v1.1.1_mac.dmg` (77.5MB)
-   - ダウンロードURL: <https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg>
+   - ダウンロードURL: <https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1-mac/GaQ_Transcriber_v1.1.1_mac.dmg>
 2. **SHA256ハッシュ**: `GaQ_Transcriber_v1.1.1_mac.dmg.sha256` (97 Bytes)
-   - ダウンロードURL: <https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg.sha256>
+   - ダウンロードURL: <https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1-mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256>
 3. **ソースコード**: 自動生成（zip、tar.gz）
 
 ### 実施した作業

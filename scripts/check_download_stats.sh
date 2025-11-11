@@ -51,13 +51,15 @@ GITHUB_OWNER="yoshihito-tsuji"
 
 # プロジェクト設定
 declare -A PROJECTS=(
-    ["gaq"]="GaQ_app"
+    ["gaq-mac"]="GaQ_app"
+    ["gaq-win"]="GaQ_app"
     ["popup"]="PoPuP"
 )
 
 # リリース設定（プロジェクトごと）
 declare -A RELEASES=(
-    ["gaq"]="v1.1.1"
+    ["gaq-mac"]="v1.1.1-mac"
+    ["gaq-win"]=""  # Windows版リリース後に設定
     ["popup"]=""  # 後で設定が必要
 )
 

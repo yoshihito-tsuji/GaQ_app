@@ -15,11 +15,11 @@
 
 ### 🎉 正式リリース - GitHub Releasesで配布中
 
-Mac版v1.1.1が[GitHub Releases](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1)で正式に配布開始されました！
+Mac版v1.1.1が[GitHub Releases](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1-mac)で正式に配布開始されました！
 
 **ダウンロード**:
-- [GaQ_Transcriber_v1.1.1_mac.dmg (77.5MB)](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg)
-- [SHA256ハッシュ](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg.sha256)
+- [GaQ_Transcriber_v1.1.1_mac.dmg (77.5MB)](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1-mac/GaQ_Transcriber_v1.1.1_mac.dmg)
+- [SHA256ハッシュ](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1-mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256)
 
 Mac版v1.1.1において、pywebview環境でのすべての課題が解決され、**実用可能な状態**になりました！
 

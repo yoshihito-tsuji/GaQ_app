@@ -28,8 +28,8 @@
 ## 📥 ダウンロード
 
 ### macOS版
-- **DMGファイル**: [GaQ_Transcriber_v1.1.1_mac.dmg](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg) (77.5MB)
-- **SHA256ハッシュ**: [GaQ_Transcriber_v1.1.1_mac.dmg.sha256](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg.sha256)
+- **DMGファイル**: [GaQ_Transcriber_v1.1.1_mac.dmg](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1-mac/GaQ_Transcriber_v1.1.1_mac.dmg) (77.5MB)
+- **SHA256ハッシュ**: [GaQ_Transcriber_v1.1.1_mac.dmg.sha256](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1-mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256)
 
 ## 💻 動作環境
 
@@ -63,7 +63,7 @@
 shasum -a 256 GaQ_Transcriber_v1.1.1_mac.dmg
 
 # SHA256ハッシュファイルと比較
-curl -L https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg.sha256
+curl -L https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1-mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256
 ```
 
 ## 📝 v1.1.1の変更内容

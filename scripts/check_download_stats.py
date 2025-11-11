@@ -13,7 +13,7 @@ Multi-Project GitHub Release Download Statistics Script
   --csv              CSV形式で出力
   --json             JSON形式で出力
   --days N           直近N日間の平均を表示（デフォルト: 7）
-  --project NAME     特定プロジェクトのみ表示 (gaq|popup)
+  --project NAME     特定プロジェクトのみ表示 (gaq-mac|gaq-win|popup)
   --help             ヘルプ表示
 
 必要な環境変数:
@@ -38,12 +38,14 @@ from typing import Dict, List, Optional, Tuple
 GITHUB_OWNER = "yoshihito-tsuji"
 
 PROJECTS = {
-    "gaq": "GaQ_app",
+    "gaq-mac": "GaQ_app",
+    "gaq-win": "GaQ_app",
     "popup": "PoPuP"
 }
 
 RELEASES = {
-    "gaq": "v1.1.1",
+    "gaq-mac": "v1.1.1-mac",
+    "gaq-win": "",  # Windows版リリース後に設定
     "popup": ""  # 後で設定が必要
 }
 
@@ -241,7 +243,7 @@ def main():
     parser.add_argument("--csv", action="store_true", help="Output in CSV format")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--days", type=int, default=7, help="Show average for last N days (default: 7)")
-    parser.add_argument("--project", choices=["gaq", "popup"], help="Show only specific project")
+    parser.add_argument("--project", choices=["gaq-mac", "gaq-win", "popup"], help="Show only specific project")
 
     args = parser.parse_args()
 
