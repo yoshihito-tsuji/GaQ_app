@@ -40,13 +40,13 @@ GITHUB_OWNER = "yoshihito-tsuji"
 PROJECTS = {
     "gaq-mac": "GaQ_app",
     "gaq-win": "GaQ_app",
-    "popup": "PoPuP"
+    "popup": "Pop_app"
 }
 
 RELEASES = {
     "gaq-mac": "v1.1.1-mac",
-    "gaq-win": "",  # Windows版リリース後に設定
-    "popup": ""  # 後で設定が必要
+    "gaq-win": "windows-v1.1.1",
+    "popup": "v1.2.0"
 }
 
 # カラーコード

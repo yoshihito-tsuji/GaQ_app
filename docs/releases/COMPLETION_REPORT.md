@@ -618,3 +618,157 @@ release/windows/distribution/
 **バージョン**: Windows v1.1.0
 
 ✅ **GaQ Offline Transcriber Windows版 v1.1.0 リリース準備完了**
+
+---
+
+## 📊 ダウンロード統計スクリプト作成・更新（2025-11-11）
+
+### 作業概要
+- **作業日**: 2025年11月11日
+- **作業時間**: 約30分
+- **担当**: Claude Code (Sonnet 4.5)
+- **ステータス**: ✅ **完了**
+
+### 完了した作業
+
+#### 1. マルチプロジェクト統計スクリプト作成 ✅
+**成果物**: [scripts/check_download_stats.py](scripts/check_download_stats.py)
+
+**機能:**
+- GitHub Release APIを使用したダウンロード統計取得
+- マルチプロジェクト対応（GaQ_app Mac/Windows、PoPuP）
+- 3種類の出力形式（Pretty/CSV/JSON）
+- プラットフォーム自動判定（macOS/Windows/Hash）
+- 1日あたり平均ダウンロード数計算
+
+**設定:**
+```python
+GITHUB_OWNER = "yoshihito-tsuji"
+
+PROJECTS = {
+    "gaq-mac": "GaQ_app",
+    "gaq-win": "GaQ_app",
+    "popup": "Pop_app"
+}
+
+RELEASES = {
+    "gaq-mac": "v1.1.1-mac",
+    "gaq-win": "windows-v1.1.1",
+    "popup": "v1.2.0"
+}
+```
+
+**使用方法:**
+```bash
+# 全プロジェクトの統計を表示
+python3 scripts/check_download_stats.py
+
+# CSV形式で出力
+python3 scripts/check_download_stats.py --csv
+
+# 特定プロジェクトのみ表示
+python3 scripts/check_download_stats.py --project gaq-mac
+```
+
+#### 2. 自動収集スクリプト作成 ✅
+**成果物**: [scripts/daily_stats_collect.sh](scripts/daily_stats_collect.sh)
+
+**機能:**
+- 日次自動実行用ラッパースクリプト
+- CSV形式で統計保存（`stats/downloads_YYYY-MM-DD.csv`）
+- 実行ログ記録（`logs/stats_collection.log`）
+
+#### 3. セットアップスクリプト作成 ✅
+**成果物**: [scripts/setup_daily_stats.sh](scripts/setup_daily_stats.sh)
+
+**機能:**
+- cron設定の対話的セットアップ
+- 必要ディレクトリの自動作成
+- テスト実行機能
+
+**注意:**
+- 常時起動PCでの使用を推奨
+- ノートPCではスリープ時に実行されない可能性
+
+#### 4. ドキュメント作成 ✅
+**成果物**: [scripts/README.md](scripts/README.md)
+
+**内容:**
+- 統計スクリプトの詳細な使用方法
+- 自動収集の設定手順
+- cron設定例
+- トラブルシューティング
+
+#### 5. .gitignore更新 ✅
+**追加項目:**
+```
+# Download statistics
+stats/
+```
+
+### 📊 現在のダウンロード統計（2025-11-11時点）
+
+**GaQ_app Mac版 (v1.1.1-mac)**
+- リリース日: 2025-11-11（本日公開）
+- 合計ダウンロード: **4 DL**
+  - DMGファイル: 4 DL
+  - SHA256ハッシュ: 0 DL
+
+**GaQ_app Windows版 (windows-v1.1.1)**
+- リリース日: 2025-10-22（20日前）
+- 合計ダウンロード: **0 DL**
+  - Portable ZIP: 0 DL
+  - Setup EXE: 0 DL
+
+**PoPuP (v1.2.0)**
+- リリース日: 2025-11-10（1日前）
+- 合計ダウンロード: **35 DL**
+  - Portable ZIP: 35 DL
+
+### 技術的特徴
+
+#### 依存関係ゼロ設計
+- Python標準ライブラリのみ使用
+- 外部パッケージ不要（`urllib`, `json`, `csv`, `argparse`）
+- どの環境でも即座に実行可能
+
+#### カラフルな出力
+- ANSIカラーコードによる視認性向上
+- プロジェクトごとの明確な区切り
+- 統計サマリーの強調表示
+
+#### API制限対策
+- `GITHUB_TOKEN`環境変数のサポート
+- 未認証でも動作（制限あり）
+- エラーハンドリング実装
+
+### 今後の展開
+
+**自動収集の運用:**
+- 研究室の常時起動PCでcron設定を推奨
+- 毎日00:00に自動実行
+- 統計データの蓄積によるトレンド分析が可能
+
+**データ活用:**
+- リリースタイミングの効果測定
+- プラットフォーム別人気度の把握
+- バージョンアップの影響分析
+
+### 関連ファイル
+
+**新規作成（4ファイル）:**
+- `scripts/check_download_stats.py` (309行)
+- `scripts/daily_stats_collect.sh`
+- `scripts/setup_daily_stats.sh`
+- `scripts/README.md`
+
+**更新（1ファイル）:**
+- `.gitignore` (stats/ディレクトリ除外)
+
+---
+
+**作業完了確認者**: Claude Code (Sonnet 4.5)
+**完了日時**: 2025-11-11 22:00
+**バージョン**: 統計スクリプト v1.0.0
+
+✅ **マルチプロジェクトダウンロード統計システム構築完了**
