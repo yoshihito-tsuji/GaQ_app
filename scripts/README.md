@@ -117,13 +117,78 @@ GaQ_app,macOS,v1.1.1,GaQ_Transcriber_v1.1.1_mac.dmg.sha256,1,0,N/A,2025-11-11T03
 - **Hash**: `.sha256` を含むファイル
 - **Unknown**: 上記以外
 
-### 定期的な統計収集
+---
 
-cronで定期的に統計を収集する例：
+## ⏰ daily_stats_collect.sh
+
+ダウンロード統計を自動収集するラッパースクリプトです。毎日00:00に実行されることを想定しています。
+
+### 機能
+
+- ダウンロード統計をCSV形式で収集
+- 日付別のファイルに保存 (`stats/downloads_YYYY-MM-DD.csv`)
+- 実行ログを記録 (`logs/stats_collection.log`)
+
+### 手動実行
 
 ```bash
-# 毎日午前9時に統計を収集してCSVに保存
-0 9 * * * cd /path/to/GaQ_app && python3 scripts/check_download_stats.py --csv >> stats/downloads_$(date +\%Y\%m\%d).csv
+./scripts/daily_stats_collect.sh
+```
+
+### 自動実行の設定
+
+`setup_daily_stats.sh` スクリプトを使用して設定できます（後述）。
+
+または、手動でcrontabに追加：
+
+```bash
+# crontabを開く
+crontab -e
+
+# 以下を追加（パスは実際の環境に合わせて変更）
+0 0 * * * cd /Users/ytsuji/dev/GaQ_app && ./scripts/daily_stats_collect.sh >> /Users/ytsuji/dev/GaQ_app/logs/cron.log 2>&1
+```
+
+### 出力先
+
+- **統計データ**: `stats/downloads_YYYY-MM-DD.csv`
+- **実行ログ**: `logs/stats_collection.log`
+- **cronログ**: `logs/cron.log`
+
+---
+
+## ⚙️ setup_daily_stats.sh
+
+毎日00:00の自動統計収集を設定するセットアップスクリプトです。
+
+### 使用方法
+
+```bash
+./scripts/setup_daily_stats.sh
+```
+
+### セットアップ内容
+
+1. 必要なディレクトリを作成（`stats/`, `logs/`）
+2. cron設定コマンドを表示
+3. テスト実行を提供
+
+### セットアップ手順
+
+スクリプトを実行すると、以下の手順が案内されます：
+
+1. スクリプトを実行
+2. 表示されたcronコマンドをコピー
+3. `crontab -e` で設定を追加
+4. 保存して完了
+
+### 環境変数の設定（推奨）
+
+API制限を緩和するため、GITHUB_TOKENの設定を推奨します：
+
+```bash
+# ~/.zshrc または ~/.bash_profile に追加
+export GITHUB_TOKEN="your_github_token_here"
 ```
 
 ---
