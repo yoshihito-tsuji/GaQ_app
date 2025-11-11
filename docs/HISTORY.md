@@ -1,5 +1,125 @@
 # GaQ Offline Transcriber - 開発履歴
 
+## 2025-11-11: Mac版v1.1.1 GitHub Release正式公開
+
+### 作業概要
+- **作業時間**: 2025-11-11 約2時間
+- **担当**: Claude Code + Yoshihitoさん
+- **ステータス**: ✅ 完了
+
+### 公開内容
+
+#### GitHub Release
+- **リリースページ**: <https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1>
+- **タグ**: v1.1.1
+- **ステータス**: 正式公開（Draft解除完了）
+
+#### 配布アセット
+1. **DMGファイル**: `GaQ_Transcriber_v1.1.1_mac.dmg` (77.5MB)
+   - ダウンロードURL: <https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg>
+2. **SHA256ハッシュ**: `GaQ_Transcriber_v1.1.1_mac.dmg.sha256` (97 Bytes)
+   - ダウンロードURL: <https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg.sha256>
+3. **ソースコード**: 自動生成（zip、tar.gz）
+
+### 実施した作業
+
+#### 1. README.md更新
+- GitHub Releaseへのダウンロードリンク追加
+- Mac版v1.1.1の配布状況を更新（配布保留中 → 配布中）
+- ファイルサイズを最新値に更新（187MB → 77.5MB）
+- v1.1.1の主要改善内容を明記
+- 最終更新日を2025-11-11に更新
+
+#### 2. リモートリポジトリとの同期
+- `git fetch origin` でリモートの最新情報を取得
+- `git merge --ff-only origin/dev` でローカルに反映
+- 以下のドキュメントを取得：
+  - [docs/development/20251111_v1.1.1_github_release.md](development/20251111_v1.1.1_github_release.md)
+  - [docs/development/20251031_collaboration_template_creation.md](development/20251031_collaboration_template_creation.md)
+  - [docs/templates/](../templates/) - 協働環境テンプレート群
+  - [release/mac/release_notes_v1.1.1.md](../../release/mac/release_notes_v1.1.1.md)
+  - [release/mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256](../../release/mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256)
+
+### 配布状況
+
+- ✅ **Mac版v1.1.1**: GitHub Releasesで正式公開中
+- ⏳ **Windows版v1.1.1**: 準備中（クリップボード機能改善済み、ビルド待ち）
+
+### ダウンロード方法（ユーザー向け）
+
+#### 方法1: ブラウザからダウンロード
+1. [リリースページ](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1)にアクセス
+2. 「GaQ_Transcriber_v1.1.1_mac.dmg」をクリックしてダウンロード
+3. DMGをマウントしてApplicationsフォルダにドラッグ&ドロップ
+
+#### 方法2: コマンドラインからダウンロード
+```bash
+# DMGファイルのダウンロード
+curl -L -o GaQ_Transcriber_v1.1.1_mac.dmg \
+  https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg
+
+# SHA256ハッシュの確認
+curl -L https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg.sha256
+shasum -a 256 GaQ_Transcriber_v1.1.1_mac.dmg
+```
+
+### 成果
+
+#### ✅ 達成したこと
+1. Mac版v1.1.1をGitHub Releasesで正式公開
+2. ダウンロード直リンクの確認完了
+3. README.mdにダウンロード情報を追加
+4. リモートリポジトリの最新状況を反映
+
+#### 📊 期待される効果
+- ユーザーが簡単にアプリをダウンロード可能に
+- GitHub経由でダウンロード数の自動計測開始
+- セキュリティ確認（SHA256ハッシュ）が可能
+
+### 技術的詳細
+
+#### ビルド環境
+- **OS**: macOS 14.8
+- **Python**: 3.12.3
+- **PyInstaller**: 6.16.0
+- **faster-whisper**: 1.2.0
+- **FastAPI**: 0.104.1
+- **pywebview**: 6.0
+
+#### パッケージサイズ
+- **アプリ本体（非圧縮）**: 188MB
+- **DMG（圧縮後）**: 77.5MB
+- **圧縮率**: 約41%
+
+### 次のステップ
+
+#### 短期（今後1週間）
+- [ ] ダウンロード統計の定期確認
+- [ ] ユーザーフィードバックの収集
+- [ ] Windows版v1.1.1のビルドと公開
+
+#### 中期（今後1ヶ月）
+- [ ] ダウンロード数の集計スクリプト作成
+- [ ] ユーザーマニュアルの充実
+- [ ] GitHub Actionsによる自動ビルド導入検討
+
+#### 長期（今後3ヶ月）
+- [ ] コード署名対応（Mac版）
+- [ ] MSIX化とコード署名（Windows版）
+- [ ] 多言語対応の検討
+
+### 関連ファイル
+
+**更新したファイル**:
+- [README.md](../../README.md) - ダウンロード情報追加
+- [docs/HISTORY.md](../HISTORY.md) - 本セクション追加
+
+**参照ドキュメント**:
+- [docs/development/20251111_v1.1.1_github_release.md](development/20251111_v1.1.1_github_release.md) - 詳細作業ログ
+- [release/mac/release_notes_v1.1.1.md](../../release/mac/release_notes_v1.1.1.md) - リリースノート
+
+---
+
 ## 2025-10-31: 協働環境テンプレート作成（他プロジェクトへの展開基盤）
 
 ### 作業概要
