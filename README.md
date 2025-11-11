@@ -11,9 +11,15 @@
 - **対応プラットフォーム**: macOS、Windows
 - **文字起こしエンジン**: faster-whisper
 
-## ✅ **Mac版v1.1.1 完全復旧完了！（2025-10-18更新）**
+## ✅ **Mac版v1.1.1 GitHub Release配布開始！（2025-11-11更新）**
 
-### 🎉 解決済み - すべての機能が動作します
+### 🎉 正式リリース - GitHub Releasesで配布中
+
+Mac版v1.1.1が[GitHub Releases](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1)で正式に配布開始されました！
+
+**ダウンロード**:
+- [GaQ_Transcriber_v1.1.1_mac.dmg (77.5MB)](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg)
+- [SHA256ハッシュ](https://github.com/yoshihito-tsuji/GaQ_app/releases/download/v1.1.1/GaQ_Transcriber_v1.1.1_mac.dmg.sha256)
 
 Mac版v1.1.1において、pywebview環境でのすべての課題が解決され、**実用可能な状態**になりました！
 
@@ -172,8 +178,8 @@ tail -f ~/.gaq/logs/app.log
 
 ### 配布状況
 
-- ⏳ **重大な動作不良のため、v1.1.1は配布保留中**
-- ⏳ pywebview問題の解決後に配布予定
+- ✅ **Mac版v1.1.1 GitHub Releasesで配布中**
+- ⏳ Windows版v1.1.1 準備中（クリップボード機能改善済み）
 
 ### 詳細レポート
 
@@ -209,10 +215,12 @@ tail -f ~/.gaq/logs/app.log
 ## 配布パッケージ
 
 ### macOS版
-- **完全パッケージ版**: `GaQ_Transcriber_v1.1.1_mac.dmg` (約187MB)
-  - Python 3.12.12環境同梱
+
+- **完全パッケージ版**: `GaQ_Transcriber_v1.1.1_mac.dmg` (77.5MB)
+  - Python 3.12環境同梱
   - ドラッグ&ドロップですぐに使用可能
-  - v1.1.1: 起動不具合修正 + Python 3.12固定ビルド
+  - v1.1.1: SSEハートビート実装、アプリ終了高速化、pywebview完全対応
+  - ✅ [GitHub Releases](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1)で配布中
 
 ### Windows版
 
@@ -223,10 +231,11 @@ tail -f ~/.gaq/logs/app.log
   - SmartScreen警告回避のため、コード署名付きMSIX化を準備中
   - 従来のSetup.exe (SHA256: `09B4A7E572B5944A6A709FCFB333F5D33FA50DA4298CDC294A7E855B5B021F91`) は参考として保持
 - v1.1.1: クリップボードコピー機能の修正（Windows API型定義追加）
+- ⏳ GitHub Releasesへの追加準備中
 
 ## ディレクトリ構成
 
-```
+```text
 GaQ_app_v1.1.0/
 ├── release/                     # 🤖 ビルド環境（Mac/Windows）
 │   ├── mac/                     # Mac版ビルド環境
@@ -256,6 +265,7 @@ GaQ_app_v1.1.0/
 - `release/mac/src/` と `release/windows/src/` は**必ず同期を取ること**
 - 編集後は `./scripts/check_sync.sh` で差分確認が必須
 - 詳細は [release/README.md](release/README.md) を参照
+- すべての対話（AI間およびAI↔Yoshihitoさん）は日本語で行うこと
 
 ---
 
@@ -827,6 +837,6 @@ pbpaste | head -c 100
 
 ---
 
-**最終更新**: 2025-10-22
+**最終更新**: 2025-11-11
 **バージョン**: Mac v1.1.1 / Windows v1.1.1
-**ステータス**: リリース済み
+**ステータス**: Mac版GitHub Releasesで配布中
