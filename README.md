@@ -220,7 +220,7 @@ tail -f ~/.gaq/logs/app.log
   - Python 3.12環境同梱
   - ドラッグ&ドロップですぐに使用可能
   - v1.1.1: SSEハートビート実装、アプリ終了高速化、pywebview完全対応
-  - ✅ [GitHub Releases](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1)で配布中
+  - ✅ [GitHub Releases](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1-mac)で配布中
 
 ### Windows版
 
