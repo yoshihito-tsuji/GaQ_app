@@ -447,6 +447,60 @@ cd release/windows && ./build.bat
 
 ---
 
+## ⚙️ 開発・ビルド運用（gacp / GitHub Actions）
+
+このプロジェクトでは、日常のプッシュ（保存）と、正式ビルド（GitHub Actions による自動処理）を明確に分けて運用します。
+
+### 【通常の開発作業 - gacp】
+
+**目的**: ソースコードを GitHub に保存・共有する（ビルドは実行しない）
+
+**コマンド例**:
+```bash
+gacp "update: UI微調整"
+```
+
+**処理内容**:
+1. 変更を追加 (`git add -A`)
+2. コミット (`git commit -m "メッセージ"`)
+3. リモートへ push（保存・共有）
+
+→ **gacp は何度実行してもビルド処理は走りません。**
+
+### 【リリースビルド - GitHub Actions】
+
+**目的**: タグ付きリリース時に自動ビルドを実行（将来実装予定）
+
+**現状**: 現在は手動ビルドで運用中
+- Mac版: `release/mac/` でローカルビルド → GitHub Releaseへ手動アップロード
+- Windows版: `release/windows/` でローカルビルド → GitHub Releaseへ手動アップロード
+
+**将来計画**: GitHub Actions による自動ビルド導入
+- `v*-mac` タグ push時にMac版を自動ビルド
+- `v*-windows` タグ push時にWindows版を自動ビルド
+- ビルド成果物を自動でGitHub Releaseに添付
+
+詳細は [docs/development/20251022_codex_report_v1.1.1.md](docs/development/20251022_codex_report_v1.1.1.md) を参照してください。
+
+### 【使い分けまとめ】
+
+- **gacp** → コード保存のみ（ビルドしない）
+- **手動ビルド** → 現在のリリース方法（ローカルでビルド → 手動アップロード）
+- **GitHub Actions** → 将来の自動ビルド（実装予定）
+
+### 【ショートカット登録例（macOS zsh）】
+
+```bash
+gacp() {
+  local msg="${1:-update}"
+  git add -A
+  git commit -m "$msg" || true
+  git push
+}
+```
+
+---
+
 ## 🚀 開発者向け：開発ワークフロー
 
 **⚠️ 開発作業を開始する前に必ずこのセクションを確認してください**
