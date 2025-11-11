@@ -1,11 +1,11 @@
 # GaQ Offline Transcriber - 開発履歴
 
-## 2025-11-11: Mac版v1.1.1 GitHub Release正式公開
+## 2025-11-11: Mac版v1.1.1 GitHub Release正式公開 & ダウンロード統計スクリプト作成
 
 ### 作業概要
-- **作業時間**: 2025-11-11 約2時間
+- **作業時間**: 2025-11-11 約3時間
 - **担当**: Claude Code + Yoshihitoさん
-- **ステータス**: ✅ 完了
+- **ステータス**: ✅ 完了（統計自動収集設定は今後の課題）
 
 ### 公開内容
 
@@ -40,6 +40,34 @@
   - [release/mac/release_notes_v1.1.1.md](../../release/mac/release_notes_v1.1.1.md)
   - [release/mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256](../../release/mac/GaQ_Transcriber_v1.1.1_mac.dmg.sha256)
 
+#### 3. ダウンロード統計スクリプト作成
+- **scripts/check_download_stats.py**: マルチプロジェクト対応統計スクリプト
+  - GaQ_app（Mac/Windows）とPoPuP（Windows）の両方に対応
+  - 出力形式: プリティ表示、CSV、JSON
+  - プラットフォーム自動判定（macOS、Windows、Hash）
+  - Python標準ライブラリのみで実装（外部依存なし）
+  - GitHub API統合（GITHUB_TOKEN対応）
+
+- **scripts/daily_stats_collect.sh**: 自動収集ラッパー
+  - CSV形式で日別統計を保存
+  - 実行ログ記録機能
+  - エラーハンドリング
+
+- **scripts/setup_daily_stats.sh**: セットアップスクリプト
+  - 必要ディレクトリの自動作成
+  - cron設定ガイダンス
+  - テスト実行機能
+
+- **scripts/README.md**: ドキュメント更新
+  - 各スクリプトの詳細な使用方法
+  - cron設定手順
+  - 環境変数設定ガイド
+
+#### 4. 初回統計取得
+- リリース直後の統計を確認：**合計3ダウンロード**
+  - GaQ_Transcriber_v1.1.1_mac.dmg: 2件
+  - SHA256ハッシュ: 1件
+
 ### 配布状況
 
 - ✅ **Mac版v1.1.1**: GitHub Releasesで正式公開中
@@ -70,11 +98,15 @@ shasum -a 256 GaQ_Transcriber_v1.1.1_mac.dmg
 2. ダウンロード直リンクの確認完了
 3. README.mdにダウンロード情報を追加
 4. リモートリポジトリの最新状況を反映
+5. マルチプロジェクト対応のダウンロード統計スクリプト作成
+6. 自動収集の仕組みを整備（手動実行・cron・GitHub Actions対応可能）
 
 #### 📊 期待される効果
 - ユーザーが簡単にアプリをダウンロード可能に
 - GitHub経由でダウンロード数の自動計測開始
 - セキュリティ確認（SHA256ハッシュ）が可能
+- ダウンロード推移を定期的に確認可能
+- GaQ_appとPoPuPの統計を一元管理
 
 ### 技術的詳細
 
@@ -94,12 +126,15 @@ shasum -a 256 GaQ_Transcriber_v1.1.1_mac.dmg
 ### 次のステップ
 
 #### 短期（今後1週間）
-- [ ] ダウンロード統計の定期確認
+- [ ] ダウンロード統計の定期確認（手動実行で週1回程度）
 - [ ] ユーザーフィードバックの収集
 - [ ] Windows版v1.1.1のビルドと公開
 
 #### 中期（今後1ヶ月）
-- [ ] ダウンロード数の集計スクリプト作成
+- [x] ダウンロード数の集計スクリプト作成 ✅ 完了
+- [ ] **統計自動収集の環境整備**（以下のいずれか）
+  - 研究室の常時稼働PCでcron設定
+  - GitHub Actionsによる自動実行
 - [ ] ユーザーマニュアルの充実
 - [ ] GitHub Actionsによる自動ビルド導入検討
 
@@ -113,6 +148,11 @@ shasum -a 256 GaQ_Transcriber_v1.1.1_mac.dmg
 **更新したファイル**:
 - [README.md](../../README.md) - ダウンロード情報追加
 - [docs/HISTORY.md](../HISTORY.md) - 本セクション追加
+- [scripts/check_download_stats.py](../../scripts/check_download_stats.py) - 統計スクリプト（新規）
+- [scripts/daily_stats_collect.sh](../../scripts/daily_stats_collect.sh) - 自動収集ラッパー（新規）
+- [scripts/setup_daily_stats.sh](../../scripts/setup_daily_stats.sh) - セットアップスクリプト（新規）
+- [scripts/README.md](../../scripts/README.md) - スクリプトドキュメント更新
+- [.gitignore](../../.gitignore) - stats/ディレクトリを除外
 
 **参照ドキュメント**:
 - [docs/development/20251111_v1.1.1_github_release.md](development/20251111_v1.1.1_github_release.md) - 詳細作業ログ
