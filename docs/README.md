@@ -25,6 +25,13 @@
 - **[COMPLETION_REPORT.md](releases/COMPLETION_REPORT.md)** - v1.1.0リリース作業完了報告
 - **[PROGRESS_BAR_FIX_REPORT.md](releases/PROGRESS_BAR_FIX_REPORT.md)** - プログレスバー修正レポート
 
+#### [handbook/](handbook/)
+README から分離した運用ハンドブック。リリース状況・開発ルール・詳細トラブルシューティングを統合。
+
+- **[release_status.md](handbook/release_status.md)** - 現行バージョン、ダウンロードリンク、改善点、配布パッケージ
+- **[development_workflow.md](handbook/development_workflow.md)** - リポジトリ構成、同期ルール、チェックリスト、将来計画
+- **[troubleshooting.md](handbook/troubleshooting.md)** - JavaScript/pywebview の診断、ログの追い方、よくある課題
+
 #### [guides/](guides/)
 ビルド手順、配布手順、環境セットアップガイド
 
