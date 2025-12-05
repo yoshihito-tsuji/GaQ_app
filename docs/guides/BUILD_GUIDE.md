@@ -25,6 +25,80 @@ Python 3.12.x を以下からダウンロードしてインストール:
 
 ---
 
+## 🔐 コード署名・公証（macOS）
+
+### 前提条件
+
+1. **Apple Developer Program**に登録（年間$99）
+2. **Developer ID Application証明書**をKeychainにインストール
+3. **App固有パスワード**を作成（公証用）
+
+### 証明書の準備
+
+```bash
+# 利用可能な証明書を確認
+security find-identity -v -p codesigning
+
+# 出力例:
+# 1) XXXXX "Developer ID Application: Your Name (TEAM_ID)"
+```
+
+### 公証用認証情報の保存（推奨）
+
+Keychainに認証情報を保存することで、毎回パスワードを入力する必要がなくなります：
+
+```bash
+xcrun notarytool store-credentials "notarytool" \
+  --apple-id "your@email.com" \
+  --team-id "YOUR_TEAM_ID" \
+  --password "app-specific-password"
+```
+
+### ビルドオプション
+
+```bash
+cd release/mac
+
+# 通常ビルド（署名なし、開発用）
+./build.sh
+
+# 署名付きビルド（Developer ID署名）
+./build.sh --sign
+
+# 署名＋公証（本番リリース用）
+./build.sh --notarize
+
+# DMGをスキップ（.appのみ生成）
+./build.sh --sign --skip-dmg
+```
+
+### 環境変数による設定
+
+```bash
+# 証明書を明示的に指定する場合
+export DEVELOPER_ID="Developer ID Application: Your Name (TEAM_ID)"
+
+# 環境変数で公証認証情報を設定する場合（Keychain推奨）
+export APPLE_ID="your@email.com"
+export APPLE_PASSWORD="app-specific-password"
+export TEAM_ID="YOUR_TEAM_ID"
+```
+
+### 署名・公証の検証
+
+```bash
+# 署名の検証
+codesign --verify --deep --strict --verbose=2 "dist/GaQ Offline Transcriber.app"
+
+# 公証チケットの確認
+xcrun stapler validate "dist/GaQ Offline Transcriber.app"
+
+# Gatekeeperでの検証
+spctl --assess --verbose=4 --type execute "dist/GaQ Offline Transcriber.app"
+```
+
+---
+
 ## 📦 パッケージング手順
 
 ### 🍎 Mac版ビルド（Mac環境で実行）
@@ -289,9 +363,10 @@ onefile=True,  # 単一実行ファイルにまとめる
 例: v1.1.0 = メジャー.マイナー.パッチ
 
 ### リリース成果物
-1. **Mac版**: `GaQ_Transcriber_v1.1.0_mac.dmg`
-2. **Windows版**: `GaQ_Transcriber_v1.1.0_windows_x64.zip`
-3. **ソースコード**: `GaQ_Transcriber_v1.1.0_source.zip`
+
+1. **Mac版**: `GaQ_Transcriber_v1.1.1_mac.dmg`（署名・公証済み推奨）
+2. **Windows版**: `GaQ_Transcriber_Windows_v1.1.1_Portable.zip`
+3. **ソースコード**: `GaQ_Transcriber_v1.1.1_source.zip`
 
 ---
 
@@ -301,8 +376,10 @@ onefile=True,  # 単一実行ファイルにまとめる
 - [pywebview公式ドキュメント](https://pywebview.flowrl.com/)
 - [FastAPI公式ドキュメント](https://fastapi.tiangolo.com/)
 - [faster-whisper GitHub](https://github.com/SYSTRAN/faster-whisper)
+- [Apple Developer - Notarizing](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution)
+- [Microsoft Docs - MSIX](https://docs.microsoft.com/ja-jp/windows/msix/)
 
 ---
 
-**最終更新**: 2025-10-02
+**最終更新**: 2025-12-05
 **担当**: 公立はこだて未来大学 辻研究室

@@ -1,0 +1,332 @@
+# GaQ Offline Transcriber - ビルド＆リリースワークフロー
+#
+# トリガー:
+#   - 手動実行（workflow_dispatch）
+#   - タグプッシュ（v*）
+#
+# タグ運用:
+#   - v1.2.0 → Mac版・Windows版の両方をビルドしてRelease添付
+#
+# 必要なSecrets:
+#   - APPLE_DEVELOPER_ID_CERT_BASE64: Developer ID証明書（.p12をbase64エンコード）
+#   - APPLE_DEVELOPER_ID_CERT_PASSWORD: 証明書のパスフレーズ
+#   - APPLE_ID: Apple ID（公証用）
+#   - APPLE_TEAM_ID: Apple Developer Team ID
+#   - APPLE_APP_SPECIFIC_PASSWORD: App固有パスワード（公証用）
+
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 1.2.0)'
+        required: true
+        default: '1.1.1'
+      skip_notarization:
+        description: 'Skip macOS notarization'
+        required: false
+        type: boolean
+        default: false
+
+  push:
+    tags:
+      - 'v*'
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ========================================
+  # macOS ビルドジョブ
+  # ========================================
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    outputs:
+      dmg_name: ${{ steps.build.outputs.dmg_name }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # タグから v を除去
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: release/mac
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/requirements.txt
+          pip install pyinstaller Pillow
+
+      - name: Update version in build script
+        working-directory: release/mac
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # DMG名のバージョンを更新
+          sed -i '' "s/DMG_NAME=\"GaQ_Transcriber_v.*_mac.dmg\"/DMG_NAME=\"GaQ_Transcriber_v${VERSION}_mac.dmg\"/" build.sh
+          # ボリューム名のバージョンを更新
+          sed -i '' "s/-volname \"\$APP_NAME v.*\"/-volname \"\$APP_NAME v${VERSION}\"/" build.sh
+
+      - name: Import Developer ID certificate
+        if: ${{ !github.event.inputs.skip_notarization }}
+        env:
+          DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
+          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          # 一時Keychainを作成
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # 証明書をインポート
+          echo "$DEVELOPER_ID_CERT_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$DEVELOPER_ID_CERT_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Keychainをデフォルトに設定
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+          security default-keychain -s "$KEYCHAIN_PATH"
+
+          # コード署名の許可
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # 証明書を確認
+          echo "Available signing identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          # 証明書ファイルを削除
+          rm -f $RUNNER_TEMP/certificate.p12
+
+      - name: Store notarization credentials
+        if: ${{ !github.event.inputs.skip_notarization }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "notarytool" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD"
+
+      - name: Build with signing and notarization
+        id: build
+        working-directory: release/mac
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG_NAME="GaQ_Transcriber_v${VERSION}_mac.dmg"
+
+          if [ "${{ github.event.inputs.skip_notarization }}" = "true" ]; then
+            echo "Building without signing/notarization..."
+            ./build.sh
+          else
+            echo "Building with signing and notarization..."
+            ./build.sh --notarize
+          fi
+
+          echo "dmg_name=$DMG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: |
+            release/mac/dist/*.dmg
+            release/mac/dist/*.sha256
+          retention-days: 7
+
+      - name: Cleanup Keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          if [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+
+  # ========================================
+  # Windows ビルドジョブ
+  # ========================================
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    outputs:
+      zip_name: ${{ steps.build.outputs.zip_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: release/windows
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        id: build
+        working-directory: release/windows
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.version }}"
+          $ZIP_NAME = "GaQ_Transcriber_Windows_v${VERSION}_Portable.zip"
+
+          # PyInstallerでビルド
+          pyinstaller --clean -y GaQ_Transcriber.spec
+
+          # ZIPアーカイブを作成
+          Compress-Archive -Path "dist\GaQ_Transcriber\*" -DestinationPath "dist\$ZIP_NAME" -Force
+
+          # SHA256ハッシュを生成
+          $hash = (Get-FileHash "dist\$ZIP_NAME" -Algorithm SHA256).Hash
+          "$hash  $ZIP_NAME" | Out-File -FilePath "dist\${ZIP_NAME}.sha256" -Encoding ASCII
+
+          echo "zip_name=$ZIP_NAME" >> $env:GITHUB_OUTPUT
+
+          # 成果物の確認
+          Write-Host "Built artifacts:"
+          Get-ChildItem dist\*.zip, dist\*.sha256
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: |
+            release/windows/dist/*.zip
+            release/windows/dist/*.sha256
+          retention-days: 7
+
+  # ========================================
+  # GitHub Release 作成ジョブ
+  # ========================================
+  create-release:
+    name: Create Release
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: artifacts/macos
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-zip
+          path: artifacts/windows
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: List artifacts
+        run: |
+          echo "=== macOS artifacts ==="
+          ls -la artifacts/macos/ || echo "No macOS artifacts"
+          echo ""
+          echo "=== Windows artifacts ==="
+          ls -la artifacts/windows/ || echo "No Windows artifacts"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cat << 'EOF' > release_notes.md
+          ## GaQ Offline Transcriber v${{ steps.version.outputs.version }}
+
+          オフラインで動作するAI文字起こしアプリケーションです。
+
+          ### 📦 ダウンロード
+
+          #### macOS版
+          - `GaQ_Transcriber_v${{ steps.version.outputs.version }}_mac.dmg` - macOS 10.15以降対応
+          - 署名・公証済み（Gatekeeperで警告なしにインストール可能）
+
+          #### Windows版
+          - `GaQ_Transcriber_Windows_v${{ steps.version.outputs.version }}_Portable.zip` - Windows 10/11対応
+          - ZIPを解凍して `GaQ_Transcriber.exe` を実行
+
+          ### 🔒 ファイル検証
+          各ファイルのSHA256ハッシュは `.sha256` ファイルで確認できます。
+
+          ### 📋 システム要件
+          - **RAM**: 8GB以上推奨
+          - **ストレージ**: 3GB以上（モデルダウンロード用）
+          - 初回起動時にインターネット接続が必要（モデルダウンロード）
+
+          ### 🔧 主な機能
+          - faster-whisperによる高精度文字起こし
+          - Medium/Large-v3モデル対応
+          - リアルタイム進捗表示
+          - 完全オフライン動作（モデルダウンロード後）
+
+          ---
+          **開発元**: [公立はこだて未来大学 辻研究室](https://tsuji-lab.net)
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: GaQ Offline Transcriber v${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: true
+          prerelease: false
+          files: |
+            artifacts/macos/*
+            artifacts/windows/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
