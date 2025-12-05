@@ -85,7 +85,7 @@ jobs:
           sed -i '' "s/-volname \"\$APP_NAME v.*\"/-volname \"\$APP_NAME v${VERSION}\"/" build.sh
 
       - name: Import Developer ID certificate
-        if: ${{ !github.event.inputs.skip_notarization }}
+        if: ${{ github.event.inputs.skip_notarization != 'true' }}
         env:
           DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
           DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
@@ -122,7 +122,7 @@ jobs:
           rm -f $RUNNER_TEMP/certificate.p12
 
       - name: Store notarization credentials
-        if: ${{ !github.event.inputs.skip_notarization }}
+        if: ${{ github.event.inputs.skip_notarization != 'true' }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -140,7 +140,10 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           DMG_NAME="GaQ_Transcriber_v${VERSION}_mac.dmg"
 
-          if [ "${{ github.event.inputs.skip_notarization }}" = "true" ]; then
+          SKIP_NOTARIZE="${{ github.event.inputs.skip_notarization }}"
+          echo "skip_notarization value: $SKIP_NOTARIZE"
+
+          if [ "$SKIP_NOTARIZE" = "true" ]; then
             echo "Building without signing/notarization..."
             ./build.sh
           else
