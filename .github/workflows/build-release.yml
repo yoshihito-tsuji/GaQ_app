@@ -141,7 +141,8 @@ jobs:
         working-directory: release/mac
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          DMG_NAME="GaQ_Transcriber_v${VERSION}_mac.dmg"
+          DMG_NAME_VERSIONED="GaQ_Transcriber_v${VERSION}_mac.dmg"
+          DMG_NAME_LATEST="GaQ_Transcriber_macOS.dmg"
 
           SKIP_NOTARIZE="${{ github.event.inputs.skip_notarization }}"
           echo "skip_notarization value: $SKIP_NOTARIZE"
@@ -154,7 +155,15 @@ jobs:
             ./build.sh --notarize
           fi
 
-          echo "dmg_name=$DMG_NAME" >> $GITHUB_OUTPUT
+          # 固定名のコピーを作成（latest URL用）
+          if [ -f "dist/$DMG_NAME_VERSIONED" ]; then
+            cp "dist/$DMG_NAME_VERSIONED" "dist/$DMG_NAME_LATEST"
+            # SHA256も作成
+            cd dist && shasum -a 256 "$DMG_NAME_LATEST" > "${DMG_NAME_LATEST}.sha256" && cd ..
+          fi
+
+          echo "dmg_name=$DMG_NAME_VERSIONED" >> $GITHUB_OUTPUT
+          echo "dmg_name_latest=$DMG_NAME_LATEST" >> $GITHUB_OUTPUT
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
@@ -216,19 +225,26 @@ jobs:
         shell: pwsh
         run: |
           $VERSION = "${{ steps.version.outputs.version }}"
-          $ZIP_NAME = "GaQ_Transcriber_Windows_v${VERSION}_Portable.zip"
+          $ZIP_NAME_VERSIONED = "GaQ_Transcriber_Windows_v${VERSION}_Portable.zip"
+          $ZIP_NAME_LATEST = "GaQ_Transcriber_Windows.zip"
 
           # PyInstallerでビルド
           pyinstaller --clean -y GaQ_Transcriber.spec
 
-          # ZIPアーカイブを作成
-          Compress-Archive -Path "dist\GaQ_Transcriber\*" -DestinationPath "dist\$ZIP_NAME" -Force
+          # ZIPアーカイブを作成（バージョン付き）
+          Compress-Archive -Path "dist\GaQ_Transcriber\*" -DestinationPath "dist\$ZIP_NAME_VERSIONED" -Force
 
-          # SHA256ハッシュを生成
-          $hash = (Get-FileHash "dist\$ZIP_NAME" -Algorithm SHA256).Hash
-          "$hash  $ZIP_NAME" | Out-File -FilePath "dist\${ZIP_NAME}.sha256" -Encoding ASCII
+          # SHA256ハッシュを生成（バージョン付き）
+          $hash = (Get-FileHash "dist\$ZIP_NAME_VERSIONED" -Algorithm SHA256).Hash
+          "$hash  $ZIP_NAME_VERSIONED" | Out-File -FilePath "dist\${ZIP_NAME_VERSIONED}.sha256" -Encoding ASCII
 
-          echo "zip_name=$ZIP_NAME" >> $env:GITHUB_OUTPUT
+          # 固定名のコピーを作成（latest URL用）
+          Copy-Item "dist\$ZIP_NAME_VERSIONED" "dist\$ZIP_NAME_LATEST"
+          $hashLatest = (Get-FileHash "dist\$ZIP_NAME_LATEST" -Algorithm SHA256).Hash
+          "$hashLatest  $ZIP_NAME_LATEST" | Out-File -FilePath "dist\${ZIP_NAME_LATEST}.sha256" -Encoding ASCII
+
+          echo "zip_name=$ZIP_NAME_VERSIONED" >> $env:GITHUB_OUTPUT
+          echo "zip_name_latest=$ZIP_NAME_LATEST" >> $env:GITHUB_OUTPUT
 
           # 成果物の確認
           Write-Host "Built artifacts:"
