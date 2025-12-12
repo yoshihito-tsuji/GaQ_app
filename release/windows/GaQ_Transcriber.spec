@@ -36,6 +36,12 @@ hiddenimports = [
     'faster_whisper',
     'ctranslate2',
     'av',
+    # pywebview (EdgeChromium backend for Windows)
+    'webview',
+    'webview.platforms',
+    'webview.platforms.edgechromium',
+    'bottle',
+    'proxy_tools',
 ]
 
 block_cipher = None
