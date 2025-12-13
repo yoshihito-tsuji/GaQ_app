@@ -2,7 +2,7 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
-v1.2.3 - webview/platforms/winforms.py 収集対応
+v1.2.4 - 安定性向上（WebView2チェック、バックエンド明示、パス改善、cefpython3除外）
 """
 
 import os
@@ -89,7 +89,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'cefpython3',  # 旧CEFバックエンド（不要・競合回避）
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

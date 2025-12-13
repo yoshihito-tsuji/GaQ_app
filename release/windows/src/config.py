@@ -2,8 +2,12 @@
 設定ファイル
 """
 
+import os
 import sys
 from pathlib import Path
+
+# OS判定
+IS_WINDOWS = os.name == "nt"
 
 # ベースディレクトリ
 # PyInstallerでバンドルされた実行ファイルの場合、sys.frozenが設定される
@@ -15,14 +19,24 @@ else:
     BASE_DIR = Path(__file__).parent.parent
 
 # アップロードディレクトリ
-UPLOAD_DIR = BASE_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
+# Windows: %LOCALAPPDATA%\GaQ\uploads（書き込み権限が保証される場所）
+# macOS/Linux: ~/.gaq/uploads
+if IS_WINDOWS:
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        UPLOAD_DIR = Path(local_app_data) / "GaQ" / "uploads"
+    else:
+        # フォールバック: ユーザーホームディレクトリ
+        UPLOAD_DIR = Path.home() / ".gaq" / "uploads"
+else:
+    UPLOAD_DIR = Path.home() / ".gaq" / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # 許可する音声ファイル形式
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4"}
 
 # アプリケーションバージョン
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 
 # faster-whisperモデル設定
 AVAILABLE_MODELS = ["medium", "large-v3"]

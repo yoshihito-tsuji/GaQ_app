@@ -27,6 +27,7 @@ IS_WINDOWS = os.name == "nt"
 # OS別のファイルロックモジュールをインポート
 if IS_WINDOWS:
     import msvcrt
+    import winreg
 else:
     import fcntl
 
@@ -137,6 +138,130 @@ def release_single_instance_lock():
             lock_file_handle = None
 
 
+def check_webview2_runtime() -> bool:
+    """
+    WebView2ランタイムがインストールされているか確認（Windows専用）
+
+    Returns:
+        bool: WebView2がインストールされていればTrue
+    """
+    if not IS_WINDOWS:
+        return True  # macOS/Linuxでは常にTrue
+
+    # WebView2のレジストリキーをチェック
+    # 参考: https://learn.microsoft.com/ja-jp/microsoft-edge/webview2/concepts/distribution
+    registry_paths = [
+        # Per-User インストール
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+        # Per-Machine インストール (64bit)
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+        # Per-Machine インストール (32bit)
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+    ]
+
+    for hkey, path in registry_paths:
+        try:
+            key = winreg.OpenKey(hkey, path, 0, winreg.KEY_READ)
+            try:
+                value, _ = winreg.QueryValueEx(key, "pv")
+                if value and value != "0.0.0.0":
+                    logger.info(f"✅ WebView2ランタイム検出: バージョン {value}")
+                    winreg.CloseKey(key)
+                    return True
+            except FileNotFoundError:
+                pass
+            finally:
+                winreg.CloseKey(key)
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            logger.debug(f"WebView2レジストリ確認エラー ({path}): {e}")
+            continue
+
+    logger.warning("⚠️ WebView2ランタイムが検出されませんでした")
+    return False
+
+
+def show_webview2_missing_dialog():
+    """
+    WebView2がインストールされていない場合のガイダイアログを表示（Windows専用）
+    """
+    if not IS_WINDOWS:
+        return
+
+    try:
+        import ctypes
+        MB_OK = 0x0
+        MB_ICONERROR = 0x10
+
+        message = (
+            "Microsoft Edge WebView2 ランタイムがインストールされていません。\n\n"
+            "このアプリケーションを使用するには WebView2 が必要です。\n\n"
+            "以下の手順でインストールしてください：\n"
+            "1. ブラウザで以下のURLを開く\n"
+            "   https://go.microsoft.com/fwlink/p/?LinkId=2124703\n"
+            "2. 「Evergreen Bootstrapper」をダウンロード\n"
+            "3. ダウンロードしたファイルを実行\n"
+            "4. インストール完了後、このアプリを再起動\n\n"
+            "※ Windows 11 や最新の Windows 10 には通常プリインストールされています。"
+        )
+
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            message,
+            "GaQ Offline Transcriber - WebView2 が必要です",
+            MB_OK | MB_ICONERROR
+        )
+    except Exception as e:
+        logger.error(f"WebView2不足ダイアログ表示エラー: {e}")
+
+
+def show_port_in_use_dialog(port: int = 8000):
+    """
+    ポートが既に使用中である旨をユーザーに通知（OS別）
+
+    Args:
+        port: 使用中のポート番号
+    """
+    try:
+        if IS_WINDOWS:
+            import ctypes
+            MB_OK = 0x0
+            MB_ICONERROR = 0x10
+
+            message = (
+                f"ポート {port} は既に使用されています。\n\n"
+                "考えられる原因：\n"
+                "・別の GaQ インスタンスが起動中\n"
+                "・他のアプリケーションがポートを使用中\n\n"
+                "解決方法：\n"
+                "1. タスクマネージャーで既存の GaQ を終了\n"
+                "2. または PC を再起動してください"
+            )
+
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                message,
+                "GaQ Offline Transcriber - ポートエラー",
+                MB_OK | MB_ICONERROR
+            )
+        else:
+            script = f'''
+            display alert "ポートエラー" message "ポート {port} は既に使用されています。
+
+考えられる原因：
+・別の GaQ インスタンスが起動中
+・他のアプリケーションがポートを使用中
+
+解決方法：
+1. アクティビティモニタで既存の GaQ を終了
+2. または Mac を再起動してください" as critical buttons {{"OK"}} default button "OK"
+            '''
+            subprocess.run(['osascript', '-e', script], check=False, timeout=10)
+    except Exception as e:
+        logger.error(f"ポート使用中ダイアログ表示エラー: {e}")
+
+
 def show_already_running_dialog():
     """
     既に起動中である旨をユーザーに通知（OS別）
@@ -210,9 +335,12 @@ def run_fastapi_server(host: str = "127.0.0.1", port: int = 8000):
         uvicorn.run(app, host=host, port=port, log_level="warning")
 
     except OSError as e:
-        if e.errno == 48:  # Address already in use
-            logger.error(f"❌ ポート {port} は既に使用されています (Errno 48)")
+        # Address already in use: macOS=48, Windows=10048
+        if e.errno in (48, 10048):
+            logger.error(f"❌ ポート {port} は既に使用されています (Errno {e.errno})")
             logger.error("   別のGaQインスタンスまたは他のアプリケーションがポートを使用中です")
+            # ユーザーフレンドリーなダイアログを表示
+            show_port_in_use_dialog(port)
         else:
             logger.error(f"❌ FastAPIサーバー起動エラー (OSError): {e}", exc_info=True)
         sys.exit(1)
@@ -1011,7 +1139,12 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         webview_private_mode = False
     else:
         webview_private_mode = private_mode_env.lower() not in {"0", "false", "no"}
-    webview.start(debug=webview_debug, private_mode=webview_private_mode)
+
+    # Windows: winforms (WebView2) バックエンドを明示的に指定
+    if IS_WINDOWS:
+        webview.start(debug=webview_debug, private_mode=webview_private_mode, gui='winforms')
+    else:
+        webview.start(debug=webview_debug, private_mode=webview_private_mode)
 
 
 def main():
@@ -1019,6 +1152,12 @@ def main():
     アプリケーションのメインエントリーポイント
     """
     logger.info(f"=== GaQ Offline Transcriber {APP_VERSION} 起動 ===")
+
+    # Windows: WebView2ランタイムチェック（最初に実行）
+    if IS_WINDOWS and not check_webview2_runtime():
+        show_webview2_missing_dialog()
+        logger.error("=== WebView2ランタイムが見つからないため終了します ===")
+        sys.exit(1)
 
     # 単一インスタンスチェック
     if not acquire_single_instance_lock():
