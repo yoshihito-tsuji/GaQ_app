@@ -25,14 +25,15 @@ import uvicorn
 os.environ.setdefault("PYWEBVIEW_GUI", "edgechromium")
 import webview
 
-# EdgeChromiumのインポート可否を事前に確認してログを出す（フォールバック時の調査用）
+# EdgeChromiumのインポート可否を事前に確認してログを出す
+EDGECHROMIUM_IMPORT_OK = False
+EDGECHROMIUM_IMPORT_ERR = None
 try:
     import webview.platforms.edgechromium  # noqa: F401
     EDGECHROMIUM_IMPORT_OK = True
 except Exception as e:
-    EDGECHROMIUM_IMPORT_OK = False
-    # ここで落とさずログだけ。winforms/pythonnetフォールバックも許容。
-    print(f"[GaQ] EdgeChromium backend import error: {e}")
+    EDGECHROMIUM_IMPORT_ERR = str(e)
+    # フォールバックはさせず、後でユーザーに案内して終了する
 
 from config import APP_VERSION, LOG_DIR as CONFIG_LOG_DIR, UPLOAD_DIR
 
@@ -1326,6 +1327,24 @@ def main():
     アプリケーションのメインエントリーポイント
     """
     logger.info(f"=== GaQ Offline Transcriber {APP_VERSION} 起動 ===")
+    logger.info(f"🛰️ PYWEBVIEW_GUI={os.environ.get('PYWEBVIEW_GUI')} / EdgeChromium import ok: {EDGECHROMIUM_IMPORT_OK}")
+    if not EDGECHROMIUM_IMPORT_OK:
+        logger.error(f"❌ EdgeChromium backendの読み込みに失敗: {EDGECHROMIUM_IMPORT_ERR}")
+        if IS_WINDOWS:
+            try:
+                import ctypes
+                MB_OK = 0x0
+                MB_ICONERROR = 0x10
+                message = (
+                    "EdgeChromiumバックエンドの読み込みに失敗しました。\n"
+                    "WebView2ランタイムが正しくインストールされているか、\n"
+                    "配布物が破損していないかを確認してください。\n\n"
+                    "再インストール後も解決しない場合は、ログを添えてご連絡ください。"
+                )
+                ctypes.windll.user32.MessageBoxW(0, message, "GaQ - WebView起動エラー", MB_OK | MB_ICONERROR)
+            except Exception:
+                pass
+        sys.exit(1)
 
     # システム情報をログ出力（診断用）
     log_system_info()

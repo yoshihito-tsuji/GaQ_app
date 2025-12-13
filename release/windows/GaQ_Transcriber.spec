@@ -26,9 +26,9 @@ datas = [
 faster_whisper_datas = collect_data_files('faster_whisper', includes=['assets/*'])
 datas += faster_whisper_datas
 
-# 追加バイナリ（DLL）: EdgeChromium用pywin32とフォールバック用pythonnetを明示収集
+# 追加バイナリ（DLL）: EdgeChromium用pywin32を明示収集（pythonnetは同梱しない）
 binaries = []
-for mod in ("pythoncom", "pywintypes", "pythonnet"):
+for mod in ("pythoncom", "pywintypes"):
     try:
         binaries.extend(collect_dynamic_libs(mod))
     except Exception as e:
@@ -49,26 +49,28 @@ hiddenimports = [
     'faster_whisper',
     'ctranslate2',
     'av',
-    # pywebview (EdgeChromiumを第一候補、winformsもフォールバック許容)
+    # pywebview (EdgeChromiumのみを使用。winforms/pythonnetは除外)
     'webview',
     'webview.platforms',
     'webview.platforms.edgechromium',
-    'webview.platforms.winforms',
-    'webview.platforms.winforms_app',
-    # pywin32 / pythonnet 依存
+    # pywin32 依存
     'pythoncom',
     'pywintypes',
     'win32api',
     'win32com',
     'win32com.client',
-    'clr',
-    'pythonnet',
 ]
 
 block_cipher = None
 
-# 起動優先: 明示的には除外しない
-excludes = []
+# winforms / pythonnet へのフォールバックを禁止
+excludes = [
+    'pythonnet',
+    'clr',
+    'clr_loader',
+    'webview.platforms.winforms',
+    'webview.platforms.winforms_app',
+]
 
 a = Analysis(
     [str(src_dir / 'main_app.py')],
