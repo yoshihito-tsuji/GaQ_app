@@ -36,15 +36,23 @@ hiddenimports = [
     'faster_whisper',
     'ctranslate2',
     'av',
-    # pywebview (EdgeChromium backend for Windows)
+    # pywebview (EdgeChromium backend only - exclude winforms/pythonnet)
     'webview',
-    'webview.platforms',
     'webview.platforms.edgechromium',
     'bottle',
     'proxy_tools',
 ]
 
 block_cipher = None
+
+# pythonnet/winforms を物理的に除外（EdgeChromiumのみ使用）
+excludes = [
+    'pythonnet',
+    'clr',
+    'clr_loader',
+    'webview.platforms.winforms',
+    'webview.platforms.winforms_app',
+]
 
 a = Analysis(
     [str(src_dir / 'main_app.py')],
@@ -54,8 +62,8 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
+    runtime_hooks=[str(src_dir / 'runtime_hook_pywebview.py')],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
