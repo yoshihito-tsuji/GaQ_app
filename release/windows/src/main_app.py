@@ -19,6 +19,10 @@ from pathlib import Path
 
 import requests
 import uvicorn
+
+# ===== pywebviewバックエンド固定（pythonnet/winforms回避） =====
+# EdgeChromium（WebView2）のみを使用し、pythonnetへのフォールバックを防止
+os.environ.setdefault("PYWEBVIEW_GUI", "edgechromium")
 import webview
 
 from config import APP_VERSION, LOG_DIR as CONFIG_LOG_DIR, UPLOAD_DIR
@@ -1025,7 +1029,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         webview_private_mode = False
     else:
         webview_private_mode = private_mode_env.lower() not in {"0", "false", "no"}
-    webview.start(debug=webview_debug, private_mode=webview_private_mode)
+    webview.start(debug=webview_debug, private_mode=webview_private_mode, gui="edgechromium")
 
 
 def log_system_info():
@@ -1323,9 +1327,10 @@ def main():
             sys.exit(1)
 
         # WebView2ランタイムチェック（Windows）
+        # EdgeChromiumバックエンドはWebView2が必須のため、未インストール時は終了
         if not check_webview2_runtime():
-            logger.warning("=== WebView2が見つかりませんでしたが、続行を試みます ===")
-            # 完全に終了せず、続行を試みる（エラー時にフォールバック）
+            logger.error("=== WebView2が見つからないため終了します ===")
+            sys.exit(1)
 
     # GPU無効化フラグを確認
     if get_gpu_disable_flag():

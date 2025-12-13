@@ -2,86 +2,15 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
-
-依存DLL:
-- VC++ Runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll)
-- UCRT (ucrtbase.dll)
-- OpenSSL (libcrypto-*.dll, libssl-*.dll)
-- FFmpeg関連 (PyAVがバンドル)
-
-これらはPyInstallerが自動収集するが、確実にバンドルされるよう
-binaries設定で明示的に指定することも可能。
 """
 
 import os
-import sys
-import glob
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files
 
 # ソースコードディレクトリ
 src_dir = Path('src')
 
-# ===== 追加バイナリ（DLL）の収集 =====
-binaries = []
-
-# VC++ Runtime / UCRT / OpenSSL DLLの明示的収集
-# これらはPyInstallerが通常自動収集するが、念のため手動でも確認
-def find_system_dlls():
-    """システムDLLを検索してバンドルリストに追加"""
-    dll_patterns = [
-        # VC++ Runtime
-        'vcruntime140.dll',
-        'vcruntime140_1.dll',
-        'msvcp140.dll',
-        'msvcp140_1.dll',
-        # UCRT
-        'ucrtbase.dll',
-        # OpenSSL (Pythonディストリビューションに含まれる)
-        'libcrypto-*.dll',
-        'libssl-*.dll',
-    ]
-
-    search_paths = [
-        Path(sys.base_prefix) / 'DLLs',
-        Path(sys.base_prefix),
-        Path(os.environ.get('SYSTEMROOT', 'C:\\Windows')) / 'System32',
-    ]
-
-    found_dlls = []
-    for pattern in dll_patterns:
-        for search_path in search_paths:
-            if search_path.exists():
-                matches = list(search_path.glob(pattern))
-                for match in matches:
-                    if match.is_file():
-                        found_dlls.append((str(match), '.'))
-                        break  # 最初に見つかったものを使用
-
-    return found_dlls
-
-# システムDLLを収集（PyInstallerの自動収集を補完）
-try:
-    system_dlls = find_system_dlls()
-    binaries.extend(system_dlls)
-except Exception as e:
-    print(f"Warning: システムDLL収集エラー: {e}")
-
-# ctranslate2のDLLを明示的に収集
-try:
-    ct2_libs = collect_dynamic_libs('ctranslate2')
-    binaries.extend(ct2_libs)
-except Exception as e:
-    print(f"Warning: ctranslate2 DLL収集エラー: {e}")
-
-# PyAV (av) のDLLを明示的に収集
-try:
-    av_libs = collect_dynamic_libs('av')
-    binaries.extend(av_libs)
-except Exception as e:
-    print(f"Warning: av DLL収集エラー: {e}")
-
-# ===== データファイルの収集 =====
 # 追加データファイル（アイコン、静的ファイルなど）
 datas = [
     (str(src_dir / 'icon.png'), '.'),  # アイコンファイル
@@ -120,7 +49,7 @@ block_cipher = None
 a = Analysis(
     [str(src_dir / 'main_app.py')],
     pathex=[],
-    binaries=binaries,  # 明示的に収集したDLLを含める
+    binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
