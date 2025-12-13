@@ -2,11 +2,16 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
+
+方針:
+- EdgeChromium(WebView2) を第一候補とする
+- それでも失敗した場合に winforms/pythonnet フォールバックを許容し、起動を優先
+- EdgeChromium依存のpywin32、フォールバック用pythonnetのDLLを明示収集
 """
 
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 # ソースコードディレクトリ
 src_dir = Path('src')
@@ -20,6 +25,14 @@ datas = [
 # faster_whisperのアセットファイルを収集
 faster_whisper_datas = collect_data_files('faster_whisper', includes=['assets/*'])
 datas += faster_whisper_datas
+
+# 追加バイナリ（DLL）: EdgeChromium用pywin32とフォールバック用pythonnetを明示収集
+binaries = []
+for mod in ("pythoncom", "pywintypes", "pythonnet"):
+    try:
+        binaries.extend(collect_dynamic_libs(mod))
+    except Exception as e:
+        print(f"Warning: {mod} DLL収集エラー: {e}")
 
 # 追加の隠しインポート（必要に応じて追加）
 hiddenimports = [
@@ -36,35 +49,31 @@ hiddenimports = [
     'faster_whisper',
     'ctranslate2',
     'av',
-    # pywebview (EdgeChromium backend only - exclude winforms/pythonnet)
+    # pywebview (EdgeChromiumを第一候補、winformsもフォールバック許容)
     'webview',
     'webview.platforms',
     'webview.platforms.edgechromium',
-    # EdgeChromium backend が依存する pywin32 系
+    'webview.platforms.winforms',
+    'webview.platforms.winforms_app',
+    # pywin32 / pythonnet 依存
     'pythoncom',
     'pywintypes',
     'win32api',
     'win32com',
     'win32com.client',
-    'bottle',
-    'proxy_tools',
+    'clr',
+    'pythonnet',
 ]
 
 block_cipher = None
 
-# pythonnet/winforms を物理的に除外（EdgeChromiumのみ使用）
-excludes = [
-    'pythonnet',
-    'clr',
-    'clr_loader',
-    'webview.platforms.winforms',
-    'webview.platforms.winforms_app',
-]
+# 起動優先: 明示的には除外しない
+excludes = []
 
 a = Analysis(
     [str(src_dir / 'main_app.py')],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

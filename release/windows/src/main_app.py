@@ -20,10 +20,19 @@ from pathlib import Path
 import requests
 import uvicorn
 
-# ===== pywebviewバックエンド固定（pythonnet/winforms回避） =====
-# EdgeChromium（WebView2）のみを使用し、pythonnetへのフォールバックを防止
+# ===== pywebviewバックエンド設定 =====
+# EdgeChromium（WebView2）を第一候補にする
 os.environ.setdefault("PYWEBVIEW_GUI", "edgechromium")
 import webview
+
+# EdgeChromiumのインポート可否を事前に確認してログを出す（フォールバック時の調査用）
+try:
+    import webview.platforms.edgechromium  # noqa: F401
+    EDGECHROMIUM_IMPORT_OK = True
+except Exception as e:
+    EDGECHROMIUM_IMPORT_OK = False
+    # ここで落とさずログだけ。winforms/pythonnetフォールバックも許容。
+    print(f"[GaQ] EdgeChromium backend import error: {e}")
 
 from config import APP_VERSION, LOG_DIR as CONFIG_LOG_DIR, UPLOAD_DIR
 
@@ -739,6 +748,7 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
         host: ホスト名
         port: ポート番号
     """
+    logger.info(f"🛰️ PYWEBVIEW_GUI={os.environ.get('PYWEBVIEW_GUI')} / EdgeChromium import ok: {EDGECHROMIUM_IMPORT_OK}")
     # テストモード確認（環境変数 GAQ_TEST_MODE=1 で /test ページを開く）
     test_mode = os.environ.get("GAQ_TEST_MODE", "0") == "1"
     if test_mode:
