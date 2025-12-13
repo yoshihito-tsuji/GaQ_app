@@ -11,10 +11,13 @@ release/mac/dist/
 release/mac/build/
 release/windows/dist/
 release/windows/build/
+release/windows/artifacts/
+release/windows/github_*/
 
 # Python環境（大容量）
 */python/
 venv/
+venv*/
 env/
 __pycache__/
 *.pyc
@@ -75,3 +78,7 @@ archive/
 # このプロジェクトはソースコードと設定ファイルのみをGit管理します
 # ビルド成果物（DMG、.app）はGitHub Releasesで配布します
 release/mac/src/.venv/
+
+# 一時ファイル
+nul
+tmp_*
