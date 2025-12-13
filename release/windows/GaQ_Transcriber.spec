@@ -2,7 +2,7 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
-v1.2.7 - アーキテクチャ不一致修正、フックベース収集に一本化
+v1.2.8 - pythonnet 3.x PYTHONNET_PYDLL問題修正
 """
 
 import os
@@ -157,6 +157,24 @@ for lib_src, lib_dst in clr_loader_libs:
     print(f"INFO:   - {lib_src} -> {lib_dst}")
 
 # ========================================
+# Python DLL を明示的に収集（pythonnet 3.x 用）
+# ========================================
+# pythonnet 3.x は PYTHONNET_PYDLL 環境変数で Python DLL のパスを必要とする
+python_dll_name = f'python{sys.version_info.major}{sys.version_info.minor}.dll'
+python_dll_path = Path(sys.prefix) / python_dll_name
+if python_dll_path.exists():
+    binaries.append((str(python_dll_path), '.'))
+    print(f"INFO: Added Python DLL: {python_dll_path}")
+else:
+    # base_prefix を試す（venv の場合）
+    python_dll_path = Path(sys.base_prefix) / python_dll_name
+    if python_dll_path.exists():
+        binaries.append((str(python_dll_path), '.'))
+        print(f"INFO: Added Python DLL from base_prefix: {python_dll_path}")
+    else:
+        print(f"WARNING: Python DLL not found: {python_dll_name}")
+
+# ========================================
 # 隠しインポート
 # ========================================
 hiddenimports = [
@@ -200,6 +218,14 @@ print(f"INFO: Total hiddenimports: {len(hiddenimports)}")
 
 block_cipher = None
 
+# ========================================
+# ランタイムフック（pythonnet PYTHONNET_PYDLL 設定用）
+# ========================================
+runtime_hooks_list = [
+    str(Path('hooks') / 'hook-pythonnet-runtime.py'),
+]
+print(f"INFO: Runtime hooks: {runtime_hooks_list}")
+
 a = Analysis(
     [str(src_dir / 'main_app.py')],
     pathex=[],
@@ -208,7 +234,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=runtime_hooks_list,
     excludes=[
         'cefpython3',  # 旧CEFバックエンド（不要・競合回避）
     ],
