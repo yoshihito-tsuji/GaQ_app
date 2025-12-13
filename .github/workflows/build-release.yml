@@ -34,7 +34,7 @@ on:
       - 'v*'
 
 env:
-  PYTHON_VERSION: '3.12'
+  PYTHON_VERSION: '3.12.x'  # 3.12系の最新パッチを使用
 
 permissions:
   contents: write
@@ -219,6 +219,28 @@ jobs:
           pip install -r src/requirements.txt
           pip install pyinstaller
 
+      - name: Verify webview installation
+        shell: pwsh
+        run: |
+          Write-Host "=== Python Environment Check ==="
+          python -c "import sys; print(f'Python: {sys.version}')"
+          python -c "import struct, platform; print(f'Architecture: {struct.calcsize(\"P\")*8}bit, Machine: {platform.machine()}')"
+
+          Write-Host ""
+          Write-Host "=== webview Package Check ==="
+          python -c "import webview; print(f'webview version: {getattr(webview, \"__version__\", \"unknown\")}')"
+          python -c "import webview; print(f'webview location: {webview.__file__}')"
+          python -c "import webview; from pathlib import Path; p = Path(webview.__file__).parent / 'platforms'; print(f'platforms exists: {p.exists()}'); print(f'platforms contents: {list(p.glob(\"*\")) if p.exists() else \"N/A\"}')"
+
+          Write-Host ""
+          Write-Host "=== pythonnet/clr Check ==="
+          python -c "import clr_loader; print(f'clr_loader version: {getattr(clr_loader, \"__version__\", \"unknown\")}')"
+          python -c "import pythonnet; print(f'pythonnet location: {pythonnet.__file__}')"
+
+          Write-Host ""
+          Write-Host "=== pip freeze ==="
+          pip freeze | Select-String -Pattern "webview|pythonnet|clr"
+
       - name: Build with PyInstaller
         id: build
         working-directory: release/windows
@@ -228,8 +250,15 @@ jobs:
           $ZIP_NAME_VERSIONED = "GaQ_Transcriber_Windows_v${VERSION}_Portable.zip"
           $ZIP_NAME_LATEST = "GaQ_Transcriber_Windows.zip"
 
-          # PyInstallerでビルド
-          pyinstaller --clean -y GaQ_Transcriber.spec
+          # PyInstallerでビルド（DEBUGログ有効）
+          Write-Host "=== Starting PyInstaller build ==="
+          pyinstaller --clean -y --log-level DEBUG GaQ_Transcriber.spec 2>&1 | Tee-Object -FilePath "build_log.txt"
+
+          # ビルド結果確認
+          if (-not (Test-Path "dist\GaQ_Transcriber\GaQ_Transcriber.exe")) {
+            Write-Host "FATAL: GaQ_Transcriber.exe not found!"
+            exit 1
+          }
 
           # ZIPアーカイブを作成（バージョン付き）
           Compress-Archive -Path "dist\GaQ_Transcriber\*" -DestinationPath "dist\$ZIP_NAME_VERSIONED" -Force
@@ -249,6 +278,45 @@ jobs:
           # 成果物の確認
           Write-Host "Built artifacts:"
           Get-ChildItem dist\*.zip, dist\*.sha256
+
+      - name: Verify build artifacts
+        working-directory: release/windows
+        shell: pwsh
+        run: |
+          Write-Host "=== Verifying build artifacts ==="
+
+          Write-Host ""
+          Write-Host "=== webview/platforms in dist ==="
+          if (Test-Path "dist\GaQ_Transcriber\_internal\webview\platforms") {
+            Get-ChildItem "dist\GaQ_Transcriber\_internal\webview\platforms" -Recurse
+          } else {
+            Write-Host "WARNING: webview/platforms not found in dist!"
+            # 代替パスを確認
+            Write-Host "Searching for winforms.py..."
+            Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "winforms.py" -ErrorAction SilentlyContinue
+          }
+
+          Write-Host ""
+          Write-Host "=== pythonnet in dist ==="
+          if (Test-Path "dist\GaQ_Transcriber\_internal\pythonnet") {
+            Get-ChildItem "dist\GaQ_Transcriber\_internal\pythonnet" -Recurse
+          } else {
+            Write-Host "Searching for pythonnet files..."
+            Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "*pythonnet*" -ErrorAction SilentlyContinue
+            Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "Python.Runtime.dll" -ErrorAction SilentlyContinue
+          }
+
+          Write-Host ""
+          Write-Host "=== pip freeze ==="
+          pip freeze
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-log
+          path: release/windows/build_log.txt
+          retention-days: 7
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
