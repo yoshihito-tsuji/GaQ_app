@@ -1,11 +1,11 @@
 # Release Status & Distribution
 
-GaQ Offline Transcriber は macOS v1.1.1 / Windows v1.2.9 を提供中です。配布状況と直近の改善内容をここに集約し、README から参照可能な新しい情報ハブとしました。
+GaQ Offline Transcriber は macOS v1.1.1 / Windows v1.2.10 を提供中です。配布状況と直近の改善内容をここに集約し、README から参照可能な新しい情報ハブとしました。
 
 ## 現行バージョン
 
 - **Mac**: v1.1.1（pywebview 課題をすべて解消、実運用可能）
-- **Windows**: v1.2.9（pythonnet 初期化失敗で起動できない GitHub ZIP を修正。v1.2.3 以前は再ダウンロード推奨）
+- **Windows**: v1.2.10（ブラウザアプリモードに切替、pythonnet依存を解消）
 - **文字起こしエンジン**: faster-whisper（Medium / Large-v3）
 
 ## コード署名・公証の状況
@@ -42,10 +42,10 @@ GaQ Offline Transcriber は macOS v1.1.1 / Windows v1.2.9 を提供中です。�
 
 ### Windows版
 
-- 搭載バージョン: v1.2.9 Portable ZIP（pythonnet 初期化失敗で起動しない問題を修正）
+- 搭載バージョン: v1.2.10 Portable ZIP（ブラウザアプリモードで安定動作）
 - 配布形式: ZIP 解凍 → `GaQ_Transcriber.exe` 実行（インストーラ版は署名準備中）
-- 修正内容: pythonnet を事前初期化して GitHub ダウンロード版が起動しない不具合を解消
-- リリース配布: GitHub Releases から最新版 ZIP を取得（旧 v1.2.3 以前は再ダウンロード推奨）
+- 修正内容: Edge/Chrome アプリモード（`--app`）を採用し、pythonnet依存を完全に解消
+- リリース配布: GitHub Releases から最新版 ZIP を取得（旧 v1.2.9 以前は再ダウンロード推奨）
 
 ### オフライン動作
 
@@ -95,4 +95,4 @@ GaQ Offline Transcriber は macOS v1.1.1 / Windows v1.2.9 を提供中です。�
 - [docs/handbook/development_workflow.md](development_workflow.md) – 配布と同期手順
 - [docs/handbook/troubleshooting.md](troubleshooting.md) – リリース後の安定性確保手順
 
-**最終更新**: 2025-12-05（署名・公証フロー追加）
+**最終更新**: 2025-12-13（Windows v1.2.10: ブラウザアプリモード採用）
