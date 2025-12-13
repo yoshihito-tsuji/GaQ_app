@@ -28,12 +28,21 @@ import webview
 # EdgeChromiumのインポート可否を事前に確認してログを出す
 EDGECHROMIUM_IMPORT_OK = False
 EDGECHROMIUM_IMPORT_ERR = None
+PYTHONNET_IMPORT_OK = False
+PYTHONNET_IMPORT_ERR = None
+try:
+    import clr  # pythonnet
+    PYTHONNET_IMPORT_OK = True
+except Exception as e:
+    PYTHONNET_IMPORT_ERR = str(e)
+    print(f"[GaQ] pythonnet import error: {e}")
+
 try:
     import webview.platforms.edgechromium  # noqa: F401
     EDGECHROMIUM_IMPORT_OK = True
 except Exception as e:
     EDGECHROMIUM_IMPORT_ERR = str(e)
-    # フォールバックはさせず、後でユーザーに案内して終了する
+    # フォールバックは許容（pythonnet/winformsも同梱）。メッセージだけ残す。
 
 from config import APP_VERSION, LOG_DIR as CONFIG_LOG_DIR, UPLOAD_DIR
 
@@ -1327,24 +1336,12 @@ def main():
     アプリケーションのメインエントリーポイント
     """
     logger.info(f"=== GaQ Offline Transcriber {APP_VERSION} 起動 ===")
-    logger.info(f"🛰️ PYWEBVIEW_GUI={os.environ.get('PYWEBVIEW_GUI')} / EdgeChromium import ok: {EDGECHROMIUM_IMPORT_OK}")
+    logger.info(f"🛰️ PYWEBVIEW_GUI={os.environ.get('PYWEBVIEW_GUI')} / EdgeChromium import ok: {EDGECHROMIUM_IMPORT_OK} / pythonnet import ok: {PYTHONNET_IMPORT_OK}")
     if not EDGECHROMIUM_IMPORT_OK:
         logger.error(f"❌ EdgeChromium backendの読み込みに失敗: {EDGECHROMIUM_IMPORT_ERR}")
-        if IS_WINDOWS:
-            try:
-                import ctypes
-                MB_OK = 0x0
-                MB_ICONERROR = 0x10
-                message = (
-                    "EdgeChromiumバックエンドの読み込みに失敗しました。\n"
-                    "WebView2ランタイムが正しくインストールされているか、\n"
-                    "配布物が破損していないかを確認してください。\n\n"
-                    "再インストール後も解決しない場合は、ログを添えてご連絡ください。"
-                )
-                ctypes.windll.user32.MessageBoxW(0, message, "GaQ - WebView起動エラー", MB_OK | MB_ICONERROR)
-            except Exception:
-                pass
-        sys.exit(1)
+        logger.error("   winforms/pythonnetフォールバックを試行します")
+    if not PYTHONNET_IMPORT_OK:
+        logger.error(f"❌ pythonnet(clr) の読み込みに失敗: {PYTHONNET_IMPORT_ERR}")
 
     # システム情報をログ出力（診断用）
     log_system_info()
