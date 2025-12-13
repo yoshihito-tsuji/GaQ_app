@@ -22,7 +22,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".mp4"}
 
 # アプリケーションバージョン
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.3"
 
 # faster-whisperモデル設定
 AVAILABLE_MODELS = ["medium", "large-v3"]

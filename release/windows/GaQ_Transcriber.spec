@@ -2,11 +2,12 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
+v1.2.3 - webview/platforms/winforms.py 収集対応
 """
 
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 
 # ソースコードディレクトリ
 src_dir = Path('src')
@@ -20,6 +21,25 @@ datas = [
 # faster_whisperのアセットファイルを収集
 faster_whisper_datas = collect_data_files('faster_whisper', includes=['assets/*'])
 datas += faster_whisper_datas
+
+# webview のデータファイルを収集
+datas += collect_data_files('webview')
+
+# webview/platforms を明示的に収集（collect_data_filesでは.pyが収集されない場合がある）
+# 絶対パスで明示的に指定
+webview_platforms_src = r'C:\Users\tsuji\Claude_Code\GaQ_app\release\windows\venv\Lib\site-packages\webview\platforms'
+if os.path.exists(webview_platforms_src):
+    datas += [(webview_platforms_src, 'webview/platforms')]
+    print(f"INFO: Added webview/platforms from {webview_platforms_src}")
+
+# pythonnet のデータファイルを収集
+datas += collect_data_files('pythonnet')
+
+# バイナリファイル
+binaries = []
+
+# pythonnet のバイナリを収集
+binaries += collect_dynamic_libs('pythonnet')
 
 # 追加の隠しインポート（必要に応じて追加）
 hiddenimports = [
@@ -36,20 +56,34 @@ hiddenimports = [
     'faster_whisper',
     'ctranslate2',
     'av',
-    # pywebview (EdgeChromium backend for Windows)
+    # pywebview winforms backend (Windows WebView2)
     'webview',
     'webview.platforms',
+    'webview.platforms.winforms',
     'webview.platforms.edgechromium',
+    # pythonnet 関連
+    'clr',
+    'clr_loader',
+    'pythonnet',
+    # .NET Forms 関連
+    'System',
+    'System.Windows',
+    'System.Windows.Forms',
+    'System.Drawing',
+    # その他
     'bottle',
     'proxy_tools',
 ]
+
+# webview のサブモジュールを全て収集
+hiddenimports += collect_submodules('webview')
 
 block_cipher = None
 
 a = Analysis(
     [str(src_dir / 'main_app.py')],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
