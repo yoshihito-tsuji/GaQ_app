@@ -1,5 +1,66 @@
 # GaQ Offline Transcriber - 開発履歴
 
+## 2025-12-13: Windows版 v1.2.3 起動問題修正（winforms バックエンド対応）
+
+### 作業概要
+
+- **作業時間**: 2025-12-13 約33分
+- **担当**: Claude Code（実装）+ Codex（技術指導）
+- **ステータス**: ✅ 完了
+
+### 発生した問題
+
+Windows版 v1.2.3 ドラフトビルドが起動不能。エラー：
+```
+Failed to execute script 'main_app'
+Failed to resolve Python.Runtime.Loader.Initialize
+webview\platforms\winforms.py
+```
+
+### 根本原因
+
+**PyInstaller による `webview/platforms/` ディレクトリの収集漏れ**
+
+- `collect_data_files('webview')` が `platforms/*.py` を収集しなかった
+- pywebview 6.x の Windows バックエンドは `winforms` であり、`pythonnet` 経由で .NET を使用
+- `winforms.py` 欠落により pywebview 初期化に失敗
+
+### 実施した修正
+
+1. **GaQ_Transcriber.spec**: `webview/platforms/` を明示的に収集
+   ```python
+   webview_platforms_src = r'...\venv\Lib\site-packages\webview\platforms'
+   datas += [(webview_platforms_src, 'webview/platforms')]
+   ```
+
+2. **requirements.txt**: バージョン固定
+   ```
+   pywebview==6.1
+   pythonnet==3.0.5
+   clr-loader==0.2.8
+   ```
+
+3. **config.py**: `APP_VERSION = "1.2.3"`
+
+### 検証結果
+
+- `dist/_internal/webview/platforms/winforms.py` の存在確認: ✅
+- 起動確認: ✅ 正常起動
+- pywebview GUI 初期化: ✅ 成功
+- ビルドサイズ: 362MB
+
+### 技術的教訓
+
+- PyInstaller の `collect_data_files()` は `.py` ファイルを収集しない場合がある
+- winforms バックエンドは `pythonnet` + `System.Windows.Forms` に依存
+- バージョン固定による再現性確保が重要
+
+### 関連ファイル
+
+- [docs/development/20251213_windows_v1.2.3_winforms_fix.md](development/20251213_windows_v1.2.3_winforms_fix.md) - 詳細レポート
+
+---
+
 ## 2025-12-08: プライバシーポリシーの明文化と外部通信監査
 
 ### 作業概要

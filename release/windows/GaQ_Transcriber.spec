@@ -2,16 +2,12 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
-
-方針:
-- EdgeChromium(WebView2) を第一候補とする
-- それでも失敗した場合に winforms/pythonnet フォールバックを許容し、起動を優先
-- EdgeChromium依存のpywin32、フォールバック用pythonnetのDLLを明示収集
+v1.2.4 - 安定性向上（WebView2チェック、バックエンド明示、パス改善、cefpython3除外）
 """
 
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 
 # ソースコードディレクトリ
 src_dir = Path('src')
@@ -26,20 +22,24 @@ datas = [
 faster_whisper_datas = collect_data_files('faster_whisper', includes=['assets/*'])
 datas += faster_whisper_datas
 
-# pythonnet ランタイムファイル一式を収集（clr.py など）
-try:
-    pythonnet_datas = collect_data_files('pythonnet')
-    datas += pythonnet_datas
-except Exception as e:
-    print(f"Warning: pythonnet datas 収集エラー: {e}")
+# webview のデータファイルを収集
+datas += collect_data_files('webview')
 
-# 追加バイナリ（DLL）: EdgeChromium用pywin32とpythonnetを明示収集
+# webview/platforms を明示的に収集（collect_data_filesでは.pyが収集されない場合がある）
+# 絶対パスで明示的に指定
+webview_platforms_src = r'C:\Users\tsuji\Claude_Code\GaQ_app\release\windows\venv\Lib\site-packages\webview\platforms'
+if os.path.exists(webview_platforms_src):
+    datas += [(webview_platforms_src, 'webview/platforms')]
+    print(f"INFO: Added webview/platforms from {webview_platforms_src}")
+
+# pythonnet のデータファイルを収集
+datas += collect_data_files('pythonnet')
+
+# バイナリファイル
 binaries = []
-for mod in ("pythoncom", "pywintypes", "pythonnet"):
-    try:
-        binaries.extend(collect_dynamic_libs(mod))
-    except Exception as e:
-        print(f"Warning: {mod} DLL収集エラー: {e}")
+
+# pythonnet のバイナリを収集
+binaries += collect_dynamic_libs('pythonnet')
 
 # 追加の隠しインポート（必要に応じて追加）
 hiddenimports = [
@@ -56,24 +56,29 @@ hiddenimports = [
     'faster_whisper',
     'ctranslate2',
     'av',
-    # pywebview (EdgeChromium優先。pythonnet/winformsも同梱し、フォールバック可)
+    # pywebview winforms backend (Windows WebView2)
     'webview',
-    # platforms 配下を網羅的に収集
-    *collect_submodules('webview.platforms'),
-    # pywin32 / pythonnet 依存
-    'pythoncom',
-    'pywintypes',
-    'win32api',
-    'win32com',
-    'win32com.client',
+    'webview.platforms',
+    'webview.platforms.winforms',
+    'webview.platforms.edgechromium',
+    # pythonnet 関連
     'clr',
+    'clr_loader',
     'pythonnet',
+    # .NET Forms 関連
+    'System',
+    'System.Windows',
+    'System.Windows.Forms',
+    'System.Drawing',
+    # その他
+    'bottle',
+    'proxy_tools',
 ]
 
-block_cipher = None
+# webview のサブモジュールを全て収集
+hiddenimports += collect_submodules('webview')
 
-# フォールバックを許容する（除外しない）
-excludes = []
+block_cipher = None
 
 a = Analysis(
     [str(src_dir / 'main_app.py')],
@@ -83,8 +88,10 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[str(src_dir / 'runtime_hook_pywebview.py')],
-    excludes=excludes,
+    runtime_hooks=[],
+    excludes=[
+        'cefpython3',  # 旧CEFバックエンド（不要・競合回避）
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -102,7 +109,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,
+    upx=True,
     runtime_tmpdir=None,
     console=False,  # コンソールウィンドウを表示しない
     disable_windowed_traceback=False,

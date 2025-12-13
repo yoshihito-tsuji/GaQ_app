@@ -1,17 +1,16 @@
 @echo off
-REM GaQ Offline Transcriber - Windows版ビルドスクリプト
-REM Python 3.12系を使用してビルドを実行します
+REM GaQ Offline Transcriber - Windows build script
+REM Requires: Python 3.12.x
 
-echo === GaQ Offline Transcriber - Windows版ビルド ===
+echo === GaQ Offline Transcriber - Windows Build ===
 echo.
 
-REM Python 3.12の確認
-echo 1. Pythonバージョン確認...
+REM 1. Check Python 3.12
+echo 1. Checking Python version...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [エラー] Pythonが見つかりません
-    echo Python 3.12.x をインストールしてください:
-    echo   https://www.python.org/downloads/
+    echo [ERROR] Python is not installed.
+    echo Install Python 3.12.x: https://www.python.org/downloads/release/python-3127/
     exit /b 1
 )
 
@@ -22,58 +21,50 @@ for /f "tokens=1,2 delims=." %%a in ("%PYTHON_VERSION%") do (
 )
 
 if "%PYTHON_MAJOR%.%PYTHON_MINOR%" neq "3.12" (
-    echo [エラー] Python 3.12が必要ですが、Python %PYTHON_VERSION% が見つかりました
-    echo.
-    echo Python 3.12.x をインストールしてください:
-    echo   https://www.python.org/downloads/release/python-3127/
+    echo [ERROR] Python 3.12 is required. Detected: %PYTHON_VERSION%
     exit /b 1
 )
-
-echo [OK] Python %PYTHON_VERSION% を使用します
+echo [OK] Python %PYTHON_VERSION%
 echo.
 
-REM 仮想環境の確認と作成
-echo 2. 仮想環境の確認...
+REM 2. Ensure venv
+echo 2. Ensuring virtual environment...
 if not exist venv (
-    echo 仮想環境を作成中...
     python -m venv venv
-    echo [OK] 仮想環境を作成しました
-) else (
-    echo [OK] 既存の仮想環境を使用します
 )
+call venv\Scripts\activate.bat
+echo [OK] venv ready
 echo.
 
-REM 仮想環境をアクティベート
-call venv\Scripts\activate.bat
-
-REM 依存パッケージのインストール
-echo 3. 依存パッケージのインストール...
+REM 3. Install dependencies
+echo 3. Installing dependencies...
 python -m pip install --upgrade pip >nul 2>&1
 pip install -r src\requirements.txt >nul 2>&1
 pip install pyinstaller >nul 2>&1
-echo [OK] 依存パッケージをインストールしました
+echo [OK] Dependencies installed
 echo.
 
-REM PyInstallerバージョン確認
+REM 4. PyInstaller build (artifacts folder)
+set DIST_PATH=artifacts\dist
+set BUILD_PATH=artifacts\build
+if not exist artifacts mkdir artifacts
+
 for /f "tokens=*" %%i in ('pyinstaller --version') do set PYINSTALLER_VERSION=%%i
 echo PyInstaller: %PYINSTALLER_VERSION%
-echo.
+echo 4. Building with PyInstaller...
 
-REM ビルド実行
-echo 4. PyInstallerでビルド実行...
-pyinstaller --clean -y GaQ_Transcriber.spec
+pyinstaller --clean -y --distpath %DIST_PATH% --workpath %BUILD_PATH% GaQ_Transcriber.spec
 
 if %errorlevel% equ 0 (
     echo.
-    echo [OK] ビルドが成功しました！
-    echo.
-    echo 成果物:
-    echo   dist\GaQ_Transcriber\GaQ_Transcriber.exe
-    dir dist\GaQ_Transcriber\GaQ_Transcriber.exe 2>nul
+    echo [OK] Build finished.
+    echo Output:
+    echo   %DIST_PATH%\GaQ_Transcriber\GaQ_Transcriber.exe
+    dir %DIST_PATH%\GaQ_Transcriber\GaQ_Transcriber.exe 2>nul
 ) else (
-    echo [エラー] ビルドに失敗しました
+    echo [ERROR] Build failed.
     exit /b 1
 )
 
 echo.
-echo === ビルド完了 ===
+echo === Build complete ===
