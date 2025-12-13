@@ -2,7 +2,7 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
-v1.2.4 - 安定性向上（WebView2チェック、バックエンド明示、パス改善、cefpython3除外）
+v1.2.5 - GitHub Actions対応（webview/platformsパスを動的取得）
 """
 
 import os
@@ -26,11 +26,15 @@ datas += faster_whisper_datas
 datas += collect_data_files('webview')
 
 # webview/platforms を明示的に収集（collect_data_filesでは.pyが収集されない場合がある）
-# 絶対パスで明示的に指定
-webview_platforms_src = r'C:\Users\tsuji\Claude_Code\GaQ_app\release\windows\venv\Lib\site-packages\webview\platforms'
-if os.path.exists(webview_platforms_src):
-    datas += [(webview_platforms_src, 'webview/platforms')]
+# webviewパッケージの場所から動的にパスを取得
+import webview
+webview_package_dir = Path(webview.__file__).parent
+webview_platforms_src = webview_package_dir / 'platforms'
+if webview_platforms_src.exists():
+    datas += [(str(webview_platforms_src), 'webview/platforms')]
     print(f"INFO: Added webview/platforms from {webview_platforms_src}")
+else:
+    print(f"WARNING: webview/platforms not found at {webview_platforms_src}")
 
 # pythonnet のデータファイルを収集
 datas += collect_data_files('pythonnet')
