@@ -91,7 +91,7 @@ if edge_path:
 ### GitHub Actions ビルド
 
 - ✅ ビルド成功（Run ID: 20190278878、3分33秒）
-- ✅ リリース公開: [v1.2.10](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/vv1.2.10)
+- ✅ リリース公開: [v1.2.10](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.2.10)
 - ✅ GitHubダウンロード版の動作確認完了（Yoshihitoさん確認）
 
 ## 環境変数オプション
