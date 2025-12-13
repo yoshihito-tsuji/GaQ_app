@@ -26,9 +26,18 @@
 ## 概要
 - **開発元**: [公立はこだて未来大学 辻研究室](https://tsuji-lab.net)
 - **対応プラットフォーム**: macOS 10.15 以降、Windows 10/11
-- **最新リリース**: [macOS v1.1.1](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1-mac)（ドラッグ&ドロップや pywebview 課題を解消）  
-  Windows v1.1.1 は Portable ZIP を提供中（MSIX 署名版を準備）
+- **最新リリース**:
+  - [macOS v1.1.1](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.1.1-mac)（pywebview 完全対応）
+  - [Windows v1.2.10](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.2.10)（ブラウザアプリモード採用、安定動作）
 - 詳しい配布状況と改善内容は `docs/handbook/release_status.md` を参照
+
+### Windows版 v1.2.10 の変更点
+
+**v1.2.9 以前をお使いの方は、v1.2.10 への更新を推奨します。**
+
+- デフォルトで Edge/Chrome アプリモード（`--app`）を使用
+- pythonnet/WinForms 依存を解消し、GitHub配布版の起動問題を根本解決
+- 従来のネイティブウィンドウ（pywebview）は廃止（環境変数で選択可能だが非推奨）
 
 ## 使い方（Mac版）
 1. GitHub Releases から `GaQ_Transcriber_v1.1.1_mac.dmg` をダウンロード
@@ -38,10 +47,11 @@
 5. 進捗バーとログを確認しながら待機し、完了後にコピーまたは保存
 
 ## 使い方（Windows版ポータブル）
-1. `GaQ_Transcriber_Windows_v1.1.1_Portable.zip` を取得し、任意のフォルダに展開
-2. `GaQ_Transcriber.exe` を実行（初回のみモデル自動ダウンロード）
-3. 音声ファイルを選択 → モデル選択 → 「文字起こし開始」
-4. 完了後に結果をコピーするか、メタデータ付きで保存
+1. `GaQ_Transcriber_Windows_v1.2.10_Portable.zip` を取得し、任意のフォルダに展開
+2. `GaQ_Transcriber.exe` を実行（Edge/Chrome アプリモードで起動）
+3. 初回のみモデル自動ダウンロード
+4. 音声ファイルを選択 → モデル選択 → 「文字起こし開始」
+5. 完了後に結果をコピーするか、メタデータ付きで保存
 
 ## 主要な操作ポイント
 - ファイルはダイアログ / ドラッグ&ドロップの両方に対応
@@ -63,4 +73,4 @@
 ## 連絡先
 - Website: https://tsuji-lab.net
 - 問題報告: GitHub Issues（リンク先 Release ページ参照）
-- 最終更新: 2025-11-11（macOS v1.1.1 / Windows v1.1.1）
+- 最終更新: 2025-12-13（macOS v1.1.1 / Windows v1.2.10）
