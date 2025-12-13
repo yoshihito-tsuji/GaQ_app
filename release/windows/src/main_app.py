@@ -4,10 +4,12 @@ pywebview + FastAPI によるオフライン文字起こしアプリ
 """
 
 import atexit
+import faulthandler
 import json
 import logging
 import multiprocessing
 import os
+import platform
 import subprocess
 import sys
 import threading
@@ -19,10 +21,22 @@ import requests
 import uvicorn
 import webview
 
-from config import APP_VERSION
+from config import APP_VERSION, LOG_DIR as CONFIG_LOG_DIR, UPLOAD_DIR
 
 # OS判定
 IS_WINDOWS = os.name == "nt"
+
+# ===== フェイルファスト: クラッシュログ有効化 =====
+# ハードクラッシュ時にスタックトレースをファイルに出力
+_CRASH_LOG_DIR = Path.home() / ".gaq" / "logs"
+_CRASH_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_CRASH_LOG_FILE = _CRASH_LOG_DIR / "crash.log"
+try:
+    _crash_log_handle = open(_CRASH_LOG_FILE, "a", encoding="utf-8")
+    faulthandler.enable(file=_crash_log_handle, all_threads=True)
+except Exception:
+    # ファイル出力失敗時はstderrにフォールバック
+    faulthandler.enable()
 
 # OS別のファイルロックモジュールをインポート
 if IS_WINDOWS:
@@ -38,12 +52,12 @@ else:
 
 lock_file_handle = None
 
-# ログディレクトリ
+# ログディレクトリ（config.pyから取得、環境変数で上書き可能）
 custom_log_dir = os.environ.get("GAQ_LOG_DIR")
 if custom_log_dir:
     LOG_DIR = Path(custom_log_dir)
 else:
-    LOG_DIR = Path.home() / ".gaq" / "logs"
+    LOG_DIR = CONFIG_LOG_DIR  # config.pyで定義されたディレクトリを使用
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "app.log"
 
@@ -1014,11 +1028,309 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     webview.start(debug=webview_debug, private_mode=webview_private_mode)
 
 
+def log_system_info():
+    """
+    起動時のシステム情報をログに出力（診断用）
+    """
+    try:
+        import ctypes
+
+        logger.info("=== システム情報 ===")
+        logger.info(f"  OS: {platform.system()} {platform.release()} ({platform.version()})")
+        logger.info(f"  アーキテクチャ: {platform.machine()}")
+        logger.info(f"  Python: {platform.python_version()}")
+        logger.info(f"  実行パス: {sys.executable}")
+        logger.info(f"  作業ディレクトリ: {os.getcwd()}")
+        logger.info(f"  PyInstaller: {'Yes' if getattr(sys, 'frozen', False) else 'No'}")
+
+        # メモリ情報（Windows）
+        if IS_WINDOWS:
+            try:
+                kernel32 = ctypes.windll.kernel32
+
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+
+                mem_status = MEMORYSTATUSEX()
+                mem_status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status))
+
+                total_gb = mem_status.ullTotalPhys / (1024**3)
+                avail_gb = mem_status.ullAvailPhys / (1024**3)
+                logger.info(f"  メモリ: {avail_gb:.1f}GB 空き / {total_gb:.1f}GB 合計")
+
+                if avail_gb < 4.0:
+                    logger.warning(f"  ⚠️ 利用可能メモリが少ない状態です（Large-v3モデルには8GB以上推奨）")
+            except Exception as mem_err:
+                logger.debug(f"  メモリ情報取得失敗: {mem_err}")
+
+        # ログディレクトリ情報
+        logger.info(f"  ログディレクトリ: {LOG_DIR}")
+        logger.info(f"  クラッシュログ: {_CRASH_LOG_FILE}")
+        logger.info("===================")
+
+        # CPU命令セットのチェック（AVX/AVX2）
+        check_cpu_features()
+
+    except Exception as e:
+        logger.warning(f"システム情報取得エラー: {e}")
+
+
+def check_runtime_dependencies():
+    """
+    VC++ Runtime / UCRT / OpenSSL などの依存DLLを確認
+
+    不足している場合は警告をログに出力し、インストール案内を表示
+    """
+    if not IS_WINDOWS:
+        return True  # Windows以外はチェック不要
+
+    import ctypes
+
+    required_dlls = [
+        ('vcruntime140.dll', 'Visual C++ Runtime', 'https://aka.ms/vs/17/release/vc_redist.x64.exe'),
+        ('msvcp140.dll', 'Visual C++ Runtime', 'https://aka.ms/vs/17/release/vc_redist.x64.exe'),
+        ('ucrtbase.dll', 'Universal C Runtime', None),  # Windowsに標準搭載
+    ]
+
+    missing_dlls = []
+    logger.info("=== DLL依存チェック ===")
+
+    for dll_name, description, download_url in required_dlls:
+        try:
+            ctypes.WinDLL(dll_name)
+            logger.info(f"  ✅ {dll_name}")
+        except OSError:
+            logger.warning(f"  ❌ {dll_name} が見つかりません ({description})")
+            if download_url:
+                missing_dlls.append((dll_name, description, download_url))
+
+    logger.info("=======================")
+
+    if missing_dlls:
+        logger.error("⚠️ 必要なランタイムが不足しています:")
+        for dll_name, description, download_url in missing_dlls:
+            logger.error(f"  - {description}: {download_url}")
+
+        # ユーザーにダイアログで通知
+        try:
+            import ctypes
+            MB_OK = 0x0
+            MB_ICONERROR = 0x10
+            message = (
+                "必要なランタイムが見つかりません。\n\n"
+                "Visual C++ 再頒布可能パッケージをインストールしてください:\n"
+                "https://aka.ms/vs/17/release/vc_redist.x64.exe\n\n"
+                "インストール後、アプリを再起動してください。"
+            )
+            ctypes.windll.user32.MessageBoxW(0, message, "GaQ - ランタイムエラー", MB_OK | MB_ICONERROR)
+        except Exception:
+            pass
+
+        return False
+
+    return True
+
+
+def check_webview2_runtime():
+    """
+    WebView2ランタイムの存在を確認
+
+    WebView2が見つからない場合は自動インストーラへの誘導を表示
+
+    Returns:
+        bool: WebView2が利用可能な場合True
+    """
+    if not IS_WINDOWS:
+        return True
+
+    import ctypes
+    import winreg
+
+    WEBVIEW2_DOWNLOAD_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+
+    logger.info("=== WebView2ランタイムチェック ===")
+
+    # レジストリでWebView2の存在を確認
+    webview2_keys = [
+        # Per-machine installation
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+        # Per-user installation
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+    ]
+
+    webview2_found = False
+    webview2_version = None
+
+    for hkey, key_path in webview2_keys:
+        try:
+            with winreg.OpenKey(hkey, key_path) as key:
+                version, _ = winreg.QueryValueEx(key, "pv")
+                if version and version != "0.0.0.0":
+                    webview2_found = True
+                    webview2_version = version
+                    break
+        except (FileNotFoundError, OSError):
+            continue
+
+    if webview2_found:
+        logger.info(f"  ✅ WebView2 Runtime: {webview2_version}")
+        logger.info("=================================")
+        return True
+    else:
+        logger.warning("  ❌ WebView2 Runtimeが見つかりません")
+        logger.warning(f"     ダウンロード: {WEBVIEW2_DOWNLOAD_URL}")
+        logger.info("=================================")
+
+        # ユーザーにダイアログで通知
+        try:
+            MB_YESNO = 0x4
+            MB_ICONWARNING = 0x30
+            IDYES = 6
+
+            message = (
+                "WebView2ランタイムが見つかりません。\n\n"
+                "このアプリを実行するにはWebView2が必要です。\n"
+                "今すぐダウンロードページを開きますか？\n\n"
+                "(Windows 10/11には通常プリインストールされています)"
+            )
+
+            result = ctypes.windll.user32.MessageBoxW(
+                0, message, "GaQ - WebView2が必要です",
+                MB_YESNO | MB_ICONWARNING
+            )
+
+            if result == IDYES:
+                # ブラウザでダウンロードページを開く
+                import webbrowser
+                webbrowser.open(WEBVIEW2_DOWNLOAD_URL)
+                logger.info("WebView2ダウンロードページを開きました")
+
+        except Exception as e:
+            logger.error(f"WebView2ダイアログエラー: {e}")
+
+        return False
+
+
+def get_gpu_disable_flag():
+    """
+    GPU無効化フラグを環境変数またはコマンドライン引数から取得
+
+    Returns:
+        bool: GPU無効化する場合True
+    """
+    # 環境変数チェック
+    if os.environ.get("GAQ_DISABLE_GPU", "0") == "1":
+        return True
+
+    # コマンドライン引数チェック
+    if "--disable-gpu" in sys.argv:
+        return True
+
+    return False
+
+
+def check_cpu_features():
+    """
+    CPU命令セット（AVX/AVX2/FMA）の対応状況を確認
+
+    ctranslate2/faster-whisperはAVX2を使用する可能性があるため、
+    非対応CPUでは起動時に警告を表示
+    """
+    if not IS_WINDOWS:
+        return  # Windows以外は簡易チェック不可
+
+    try:
+        import ctypes
+        import struct
+
+        # CPUIDを使用してAVX/AVX2をチェック
+        # 簡易実装: レジストリまたはWMIで確認
+
+        # 方法1: PowerShellでCPU情報を取得
+        result = subprocess.run(
+            ["powershell", "-Command",
+             "Get-CimInstance -ClassName Win32_Processor | Select-Object -ExpandProperty Caption"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
+        )
+
+        if result.returncode == 0:
+            cpu_name = result.stdout.strip()
+            logger.info(f"  CPU: {cpu_name}")
+
+        # 方法2: ctranslate2のCPU情報をログ（利用可能な場合）
+        try:
+            import ctranslate2
+            if hasattr(ctranslate2, 'get_supported_compute_types'):
+                compute_types = ctranslate2.get_supported_compute_types("cpu")
+                logger.info(f"  ctranslate2対応compute_types: {compute_types}")
+
+                # int8が使えない場合は警告
+                if "int8" not in compute_types:
+                    logger.warning("  ⚠️ int8 compute typeが利用できません。パフォーマンスが低下する可能性があります。")
+        except ImportError:
+            pass  # ctranslate2が読み込めない場合はスキップ
+        except Exception as ct_err:
+            logger.debug(f"  ctranslate2チェックエラー: {ct_err}")
+
+        # 古いCPU（AVX非対応）の警告
+        # Intel Core2/初代Core i、AMD Phenom II以前はAVX非対応
+        old_cpu_patterns = [
+            "Core2", "Core(TM)2", "Pentium", "Celeron",
+            "Phenom", "Athlon", "Sempron", "Turion"
+        ]
+        if result.returncode == 0:
+            cpu_lower = cpu_name.lower()
+            for pattern in old_cpu_patterns:
+                if pattern.lower() in cpu_lower:
+                    logger.warning(f"  ⚠️ 古いCPU({pattern})が検出されました。")
+                    logger.warning("     AVX/AVX2命令に対応していない場合、文字起こし処理が失敗する可能性があります。")
+                    break
+
+    except subprocess.TimeoutExpired:
+        logger.debug("  CPU情報取得タイムアウト")
+    except Exception as e:
+        logger.debug(f"  CPU機能チェックエラー: {e}")
+
+
 def main():
     """
     アプリケーションのメインエントリーポイント
     """
     logger.info(f"=== GaQ Offline Transcriber {APP_VERSION} 起動 ===")
+
+    # システム情報をログ出力（診断用）
+    log_system_info()
+
+    # DLL依存チェック（Windows）
+    if IS_WINDOWS:
+        if not check_runtime_dependencies():
+            logger.error("=== 必要なランタイムが不足しているため終了します ===")
+            sys.exit(1)
+
+        # WebView2ランタイムチェック（Windows）
+        if not check_webview2_runtime():
+            logger.warning("=== WebView2が見つかりませんでしたが、続行を試みます ===")
+            # 完全に終了せず、続行を試みる（エラー時にフォールバック）
+
+    # GPU無効化フラグを確認
+    if get_gpu_disable_flag():
+        logger.info("🔧 GPU無効化モードが有効です")
+        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--disable-gpu"
 
     # 単一インスタンスチェック
     if not acquire_single_instance_lock():

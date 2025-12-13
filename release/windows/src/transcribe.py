@@ -3,10 +3,13 @@
 faster-whisperを使用した音声認識
 """
 
+import hashlib
+import json
 import logging
 import os
 import re
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -17,10 +20,45 @@ os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
 # ================================================
 
+# ===== ffmpeg/PyAV設定 =====
+# PyInstallerバンドル時、PyAVのffmpegを優先使用
+def setup_ffmpeg_path():
+    """
+    PyAVにバンドルされたffmpegを優先使用するようPATHを設定
+
+    PyInstallerでパッケージ化された場合、sys._MEIPASSにffmpegが含まれる
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstallerでパッケージ化されている場合
+        meipass = getattr(sys, '_MEIPASS', None)
+        if meipass:
+            meipass_path = Path(meipass)
+            # ffmpegバイナリがある可能性のあるパス
+            ffmpeg_paths = [
+                meipass_path,
+                meipass_path / "av",
+                meipass_path / "ffmpeg",
+            ]
+            for ffmpeg_path in ffmpeg_paths:
+                if ffmpeg_path.exists():
+                    # PATHの先頭に追加（優先使用）
+                    current_path = os.environ.get("PATH", "")
+                    if str(ffmpeg_path) not in current_path:
+                        os.environ["PATH"] = str(ffmpeg_path) + os.pathsep + current_path
+
+setup_ffmpeg_path()
+# ============================
+
 from faster_whisper import WhisperModel
 from huggingface_hub import snapshot_download
 
 logger = logging.getLogger(__name__)
+
+# モデルの期待されるファイル（破損検知用）
+MODEL_REQUIRED_FILES = {
+    "medium": ["model.bin", "config.json", "vocabulary.json", "tokenizer.json"],
+    "large-v3": ["model.bin", "config.json", "vocabulary.json", "tokenizer.json"],
+}
 
 
 def check_model_exists(model_name: str) -> dict:
@@ -64,6 +102,116 @@ def check_model_exists(model_name: str) -> dict:
         "size_gb": round(size_gb, 2),
         "path": str(model_dir) if exists else None,
     }
+
+
+def verify_model_integrity(model_name: str) -> dict:
+    """
+    モデルの整合性を検証
+
+    必須ファイルの存在確認と、config.jsonの読み取りテストを行う
+
+    Args:
+        model_name: モデル名（medium, large-v3など）
+
+    Returns:
+        dict: {
+            'valid': bool,           # モデルが有効か
+            'missing_files': list,   # 不足しているファイル
+            'corrupted_files': list, # 破損しているファイル
+            'model_path': str        # モデルパス
+        }
+    """
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    model_dir = cache_dir / f"models--Systran--faster-whisper-{model_name}"
+
+    result = {
+        "valid": False,
+        "missing_files": [],
+        "corrupted_files": [],
+        "model_path": None,
+    }
+
+    if not model_dir.exists():
+        logger.warning(f"モデルディレクトリが存在しません: {model_dir}")
+        return result
+
+    # snapshotsディレクトリ内の最新のスナップショットを探す
+    snapshots_dir = model_dir / "snapshots"
+    if not snapshots_dir.exists():
+        logger.warning(f"snapshotsディレクトリが存在しません: {snapshots_dir}")
+        return result
+
+    # 最新のスナップショットディレクトリを取得
+    snapshot_dirs = [d for d in snapshots_dir.iterdir() if d.is_dir()]
+    if not snapshot_dirs:
+        logger.warning("スナップショットが見つかりません")
+        return result
+
+    # 最も新しいディレクトリを使用
+    latest_snapshot = max(snapshot_dirs, key=lambda d: d.stat().st_mtime)
+    result["model_path"] = str(latest_snapshot)
+
+    # 必須ファイルの確認
+    required_files = MODEL_REQUIRED_FILES.get(model_name, ["model.bin", "config.json"])
+
+    for file_name in required_files:
+        file_path = latest_snapshot / file_name
+        if not file_path.exists():
+            result["missing_files"].append(file_name)
+            logger.warning(f"必須ファイルが不足: {file_name}")
+        else:
+            # ファイルサイズが0の場合は破損とみなす
+            if file_path.stat().st_size == 0:
+                result["corrupted_files"].append(file_name)
+                logger.warning(f"ファイルが破損（サイズ0）: {file_name}")
+
+    # config.jsonの読み取りテスト
+    config_path = latest_snapshot / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            logger.debug(f"config.json読み取り成功: {config.get('model_type', 'unknown')}")
+        except (json.JSONDecodeError, IOError) as e:
+            result["corrupted_files"].append("config.json")
+            logger.warning(f"config.jsonが破損: {e}")
+
+    # 検証結果
+    result["valid"] = len(result["missing_files"]) == 0 and len(result["corrupted_files"]) == 0
+
+    if result["valid"]:
+        logger.info(f"✅ モデル整合性チェック成功: {model_name}")
+    else:
+        logger.warning(f"⚠️ モデル整合性チェック失敗: {model_name}")
+        logger.warning(f"   不足: {result['missing_files']}, 破損: {result['corrupted_files']}")
+
+    return result
+
+
+def repair_corrupted_model(model_name: str) -> bool:
+    """
+    破損したモデルを修復（削除して再ダウンロード可能にする）
+
+    Args:
+        model_name: モデル名
+
+    Returns:
+        bool: 修復準備が完了した場合True
+    """
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    model_dir = cache_dir / f"models--Systran--faster-whisper-{model_name}"
+
+    if not model_dir.exists():
+        return True  # 既に存在しないなら修復不要
+
+    try:
+        logger.info(f"🔧 破損モデルを削除中: {model_name}")
+        shutil.rmtree(model_dir)
+        logger.info(f"✅ 破損モデル削除完了: {model_name}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ 破損モデル削除失敗: {e}")
+        return False
 
 
 def delete_model(model_name: str) -> dict:
@@ -144,13 +292,32 @@ class TranscriptionService:
             logger.info(
                 f"⬇️ モデル '{model_name}' をダウンロード中（約{model_info['size_gb']}GB、初回のみ）"
             )
+        else:
+            # 既存モデルの整合性チェック
+            logger.info(f"🔍 モデル '{model_name}' の整合性を確認中...")
+            integrity = verify_model_integrity(model_name)
+
+            if not integrity["valid"]:
+                logger.warning(f"⚠️ モデル '{model_name}' が破損しています。再ダウンロードを試みます...")
+                if repair_corrupted_model(model_name):
+                    logger.info(f"🔄 モデル '{model_name}' を再ダウンロードします")
+                else:
+                    logger.error(f"❌ モデル '{model_name}' の修復に失敗しました")
+                    raise RuntimeError(
+                        f"モデル '{model_name}' が破損しており、自動修復に失敗しました。\n"
+                        f"手動でキャッシュを削除してください: {model_info['path']}"
+                    )
 
         logger.info(f"モデル '{model_name}' をロード中...")
+        logger.info(f"  compute_type: int8 (CPU最適化)")
+        logger.info(f"  device: cpu")
         start_time = time.time()
 
         try:
             # faster-whisperが自動でダウンロード
+            logger.info("  WhisperModel初期化開始...")
             self.model = WhisperModel(model_name, device="cpu", compute_type="int8")
+            logger.info("  WhisperModel初期化完了")
 
             self.current_model_name = model_name
             elapsed = time.time() - start_time
@@ -264,7 +431,22 @@ class TranscriptionService:
                 raise PermissionError(error_msg) from e
 
         except Exception as e:
-            logger.error(f"❌ モデルロードエラー: {e}", exc_info=True)
+            elapsed = time.time() - start_time
+            logger.error(f"❌ モデルロードエラー ({elapsed:.1f}秒経過): {e}", exc_info=True)
+
+            # エラー種別の詳細診断
+            error_str = str(e).lower()
+            if "memory" in error_str or "メモリ" in error_str:
+                logger.error("  → メモリ不足の可能性があります。他のアプリを終了してください。")
+            elif "illegal instruction" in error_str or "sigill" in error_str:
+                logger.error("  → CPU命令未対応の可能性があります（AVX/AVX2が必要）。")
+            elif "ssl" in error_str or "certificate" in error_str:
+                logger.error("  → SSL/証明書エラーの可能性があります。プロキシ設定を確認してください。")
+            elif "timeout" in error_str or "connection" in error_str:
+                logger.error("  → ネットワークエラーの可能性があります。インターネット接続を確認してください。")
+            elif "disk" in error_str or "space" in error_str or "容量" in error_str:
+                logger.error("  → ディスク容量不足の可能性があります（約3GB必要）。")
+
             raise
 
     def transcribe(
@@ -376,8 +558,28 @@ class TranscriptionService:
             }
 
         except Exception as e:
+            error_str = str(e).lower()
             logger.error(f"❌ 文字起こしエラー: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+
+            # 音声フォーマット関連のエラー診断
+            user_message = str(e)
+            if "codec" in error_str or "decoder" in error_str:
+                logger.error("  → 音声コーデックエラー: サポートされていない形式の可能性があります。")
+                user_message = "音声形式がサポートされていません。MP3, WAV, M4A, FLAC, OGG形式をお試しください。"
+            elif "sample" in error_str and ("rate" in error_str or "format" in error_str):
+                logger.error("  → サンプリングレート/フォーマットエラー: 特殊な音声フォーマットの可能性があります。")
+                user_message = "音声フォーマットが特殊です。標準的なMP3/WAVファイルに変換してお試しください。"
+            elif "channel" in error_str:
+                logger.error("  → チャンネルエラー: マルチチャンネル音声の可能性があります。")
+                user_message = "マルチチャンネル音声は対応していません。ステレオまたはモノラルに変換してください。"
+            elif "ffmpeg" in error_str or "avcodec" in error_str or "av" in error_str:
+                logger.error("  → FFmpeg/PyAVエラー: 音声デコードに失敗しました。")
+                user_message = "音声ファイルの読み込みに失敗しました。ファイルが破損していないか確認してください。"
+            elif "memory" in error_str:
+                logger.error("  → メモリエラー: 大きなファイルの処理でメモリ不足の可能性があります。")
+                user_message = "メモリ不足です。他のアプリを終了するか、より小さいファイルをお試しください。"
+
+            return {"success": False, "error": user_message}
 
 
 # グローバルインスタンス（シングルトン）

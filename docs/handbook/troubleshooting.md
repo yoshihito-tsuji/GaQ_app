@@ -69,6 +69,96 @@ cp docs/development/ERROR_LOG_TEMPLATE.md docs/development/errors/ERROR_issue.md
 ```
 - 発生条件 / 期待結果 / 実際の結果 / ログ抜粋 / 再発防止策を記入
 
+## Windows版 SmartScreen / アンチウイルス対策
+
+### SmartScreen警告の回避
+
+Windows版はコード署名がないため、初回実行時にSmartScreen警告が表示される場合があります。
+
+#### 警告が表示された場合の対処
+
+1. **「詳細情報」をクリック**
+2. **「実行」ボタンをクリック**
+
+この操作は初回のみ必要で、2回目以降は警告なしで起動できます。
+
+#### 技術的背景
+
+- 未署名のEXEファイルはWindows SmartScreenにより「不明な発行元」として警告される
+- これは悪意のあるソフトウェアではなく、単にデジタル署名がないことを示す
+- 将来的にコード署名証明書の導入を検討中
+
+### アンチウイルスソフトの誤検知
+
+一部のアンチウイルスソフト（特にヒューリスティック検出が強いもの）が誤検知する場合があります。
+
+#### 対処方法
+
+1. **アンチウイルスの除外リストに追加**
+   - `GaQ_Transcriber.exe` が含まれるフォルダを除外設定に追加
+   - 例: Windows Defender → 「ウイルスと脅威の防止」→「除外の追加または削除」
+
+2. **隔離されたファイルの復元**
+   - アンチウイルスの「隔離」フォルダから復元
+   - 復元後、除外設定を追加
+
+3. **ダウンロード時にブロックされる場合**
+   - ブラウザの「安全でないダウンロード」警告を許可
+   - ダウンロード完了後、ファイルプロパティで「ブロック解除」にチェック
+
+### ファイル整合性の確認
+
+ダウンロードしたファイルが正しいかどうかは、SHA256ハッシュで確認できます。
+
+#### PowerShellでの確認方法
+
+```powershell
+# ダウンロードしたZIPファイルのハッシュを確認
+Get-FileHash GaQ_Transcriber_Windows.zip -Algorithm SHA256
+
+# 公開されている.sha256ファイルの内容と比較
+cat GaQ_Transcriber_Windows.zip.sha256
+```
+
+ハッシュ値が一致していれば、ファイルは改ざんされていません。
+
+### ログの確認
+
+起動に問題がある場合は、以下のログを確認してください。
+
+```text
+Windows: %LOCALAPPDATA%\GaQ\logs\app.log
+         %LOCALAPPDATA%\GaQ\logs\crash.log
+
+macOS:   ~/.gaq/logs/app.log
+         ~/.gaq/logs/crash.log
+```
+
+## GPU関連の問題（Windows）
+
+### 画面が真っ白/起動しない場合
+
+GPU（DirectX/WebView2）の問題が疑われる場合は、GPU無効化モードで起動してください。
+
+#### 方法1: 環境変数
+
+```powershell
+$env:GAQ_DISABLE_GPU = "1"
+.\GaQ_Transcriber.exe
+```
+
+#### 方法2: コマンドライン引数
+
+```powershell
+.\GaQ_Transcriber.exe --disable-gpu
+```
+
+### WebView2が見つからない場合
+
+Windows 10/11には通常WebView2がプリインストールされていますが、見つからない場合はアプリ起動時にダウンロードページへの誘導が表示されます。
+
+手動でインストールする場合: [WebView2ダウンロード](https://go.microsoft.com/fwlink/p/?LinkId=2124703)
+
 ## フィードバック経路
 - ユーザー報告: GitHub Issues または 研究室窓口（README 参照）
 - 内部共有: `docs/development/` ログ、`docs/team_ops/` で連絡体制を更新
