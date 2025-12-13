@@ -16,7 +16,7 @@ Windows版 v1.2.10 をリリース。pythonnet依存を完全に解消し、ブ�
 
 v1.2.8〜v1.2.9 で pythonnet 初期化の修正を試みたが、GitHub Actionsでビルドした配布版では依然として起動に失敗していた。
 
-```
+```text
 ❌ EdgeChromium backendの読み込みに失敗: No module named 'clr'
 ```
 
@@ -90,8 +90,9 @@ if edge_path:
 
 ### GitHub Actions ビルド
 
-- ビルド実行中（Run ID: 20190278878）
-- ダウンロード版の動作確認は別途実施
+- ✅ ビルド成功（Run ID: 20190278878、3分33秒）
+- ✅ リリース公開: [v1.2.10](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/vv1.2.10)
+- ✅ GitHubダウンロード版の動作確認完了（Yoshihitoさん確認）
 
 ## 環境変数オプション
 
