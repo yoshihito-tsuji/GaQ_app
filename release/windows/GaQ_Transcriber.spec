@@ -2,25 +2,44 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
-v1.2.6 - CI堅牢化（importlib経由でwebview検証、失敗時はビルド停止）
+v1.2.7 - アーキテクチャ不一致修正、フックベース収集に一本化
 """
 
 import os
 import sys
+import struct
+import platform
 import importlib
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 
 # ========================================
-# 必須パッケージの検証（失敗時はビルド停止）
+# アーキテクチャ検証（x64必須）
 # ========================================
 print("=" * 60)
+print("INFO: Verifying Python architecture...")
+pointer_size = struct.calcsize("P") * 8
+machine = platform.machine()
+print(f"INFO: Python pointer size: {pointer_size}bit")
+print(f"INFO: Platform machine: {machine}")
+print(f"INFO: Python executable: {sys.executable}")
+
+if pointer_size != 64:
+    print(f"FATAL: 64-bit Python required, but running {pointer_size}-bit")
+    print("FATAL: Build cannot continue with 32-bit Python")
+    sys.exit(1)
+
+print("INFO: Architecture check passed (64-bit)")
+print("=" * 60)
+
+# ========================================
+# 必須パッケージの検証（失敗時はビルド停止）
+# ========================================
 print("INFO: Verifying required packages...")
 
 # webview パッケージの検証
 try:
     webview = importlib.import_module('webview')
-    # webviewはバージョン属性がない場合がある
     webview_version = getattr(webview, '__version__', 'unknown')
     print(f"INFO: webview version: {webview_version}")
     print(f"INFO: webview location: {webview.__file__}")
@@ -29,7 +48,7 @@ except ImportError as e:
     print("FATAL: Build cannot continue without webview package")
     sys.exit(1)
 
-# webview/platforms の存在確認
+# webview/platforms の存在確認（検証のみ、収集はcollect_data_filesに任せる）
 webview_package_dir = Path(webview.__file__).parent
 webview_platforms_dir = webview_package_dir / 'platforms'
 if not webview_platforms_dir.exists():
@@ -38,13 +57,31 @@ if not webview_platforms_dir.exists():
 else:
     platforms_files = list(webview_platforms_dir.glob('*.py'))
     print(f"INFO: webview/platforms found with {len(platforms_files)} files")
-    if 'winforms.py' not in [f.name for f in platforms_files]:
-        print("WARNING: winforms.py not found in webview/platforms")
+    winforms_exists = 'winforms.py' in [f.name for f in platforms_files]
+    if not winforms_exists:
+        print("FATAL: winforms.py not found in webview/platforms")
+        sys.exit(1)
+    print("INFO: winforms.py verified")
 
 # pythonnet パッケージの検証
 try:
     pythonnet = importlib.import_module('pythonnet')
+    pythonnet_dir = Path(pythonnet.__file__).parent
     print(f"INFO: pythonnet location: {pythonnet.__file__}")
+
+    # Python.Runtime.dll の存在とアーキテクチャ確認
+    runtime_dll = pythonnet_dir / 'runtime' / 'Python.Runtime.dll'
+    if not runtime_dll.exists():
+        # 別のパスを探す
+        for dll_path in pythonnet_dir.rglob('Python.Runtime.dll'):
+            runtime_dll = dll_path
+            break
+
+    if runtime_dll.exists():
+        print(f"INFO: Python.Runtime.dll found at {runtime_dll}")
+        print(f"INFO: Python.Runtime.dll size: {runtime_dll.stat().st_size} bytes")
+    else:
+        print("WARNING: Python.Runtime.dll not found in pythonnet package")
 except ImportError as e:
     print(f"FATAL: Failed to import pythonnet: {e}")
     sys.exit(1)
@@ -67,7 +104,7 @@ print("=" * 60)
 src_dir = Path('src')
 
 # ========================================
-# データファイル収集
+# データファイル収集（フックベースに一本化）
 # ========================================
 datas = [
     (str(src_dir / 'icon.png'), '.'),  # アイコンファイル
@@ -77,23 +114,47 @@ datas = [
 # faster_whisperのアセットファイルを収集
 faster_whisper_datas = collect_data_files('faster_whisper', includes=['assets/*'])
 datas += faster_whisper_datas
+print(f"INFO: faster_whisper data files: {len(faster_whisper_datas)} items")
 
 # webview のデータファイルを収集（PyInstallerフック経由）
-datas += collect_data_files('webview')
+# collect_data_files は .py ファイルを含むすべてのデータを収集する
+webview_datas = collect_data_files('webview')
+datas += webview_datas
+print(f"INFO: webview data files: {len(webview_datas)} items")
 
-# webview/platforms を明示的に収集（collect_data_filesでは.pyが収集されない場合がある）
-# 上記で検証済みのパスを使用
+# webview/platforms を明示的に追加（.pyファイルがcollect_data_filesで漏れる場合の保険）
+# ディレクトリ全体を webview/platforms として追加
 datas += [(str(webview_platforms_dir), 'webview/platforms')]
-print(f"INFO: Added webview/platforms from {webview_platforms_dir}")
+print(f"INFO: Explicitly added webview/platforms from {webview_platforms_dir}")
 
 # pythonnet のデータファイルを収集
-datas += collect_data_files('pythonnet')
+pythonnet_datas = collect_data_files('pythonnet')
+datas += pythonnet_datas
+print(f"INFO: pythonnet data files: {len(pythonnet_datas)} items")
+
+# clr_loader のデータファイルを収集（.NET runtimeファイル含む）
+clr_loader_datas = collect_data_files('clr_loader')
+datas += clr_loader_datas
+print(f"INFO: clr_loader data files: {len(clr_loader_datas)} items")
 
 # ========================================
 # バイナリファイル収集
 # ========================================
 binaries = []
-binaries += collect_dynamic_libs('pythonnet')
+
+# pythonnet の動的ライブラリを収集
+pythonnet_libs = collect_dynamic_libs('pythonnet')
+binaries += pythonnet_libs
+print(f"INFO: pythonnet dynamic libs: {len(pythonnet_libs)} items")
+for lib_src, lib_dst in pythonnet_libs:
+    print(f"INFO:   - {lib_src} -> {lib_dst}")
+
+# clr_loader の動的ライブラリを収集
+clr_loader_libs = collect_dynamic_libs('clr_loader')
+binaries += clr_loader_libs
+print(f"INFO: clr_loader dynamic libs: {len(clr_loader_libs)} items")
+for lib_src, lib_dst in clr_loader_libs:
+    print(f"INFO:   - {lib_src} -> {lib_dst}")
 
 # ========================================
 # 隠しインポート

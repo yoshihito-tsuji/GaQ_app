@@ -207,10 +207,20 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
+      - name: Set up Python ${{ env.PYTHON_VERSION }} (x64)
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          architecture: 'x64'  # 64-bit Python を明示的に指定
+
+      - name: Clean previous build artifacts
+        working-directory: release/windows
+        shell: pwsh
+        run: |
+          # 前回ビルドの残骸を削除（DLL汚染防止）
+          if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
+          if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+          Write-Host "Cleaned previous build artifacts"
 
       - name: Install dependencies
         working-directory: release/windows
@@ -219,12 +229,21 @@ jobs:
           pip install -r src/requirements.txt
           pip install pyinstaller
 
-      - name: Verify webview installation
+      - name: Verify Python architecture and packages
         shell: pwsh
         run: |
           Write-Host "=== Python Environment Check ==="
           python -c "import sys; print(f'Python: {sys.version}')"
           python -c "import struct, platform; print(f'Architecture: {struct.calcsize(\"P\")*8}bit, Machine: {platform.machine()}')"
+          Write-Host "Python executable: $(where.exe python)"
+
+          # アーキテクチャ検証（64-bit必須）
+          $archCheck = python -c "import struct; print(struct.calcsize('P') * 8)"
+          if ($archCheck -ne "64") {
+            Write-Host "FATAL: 64-bit Python required, but got $archCheck-bit"
+            exit 1
+          }
+          Write-Host "Architecture check passed: 64-bit"
 
           Write-Host ""
           Write-Host "=== webview Package Check ==="
@@ -232,13 +251,19 @@ jobs:
           python -c "import webview; print(f'webview location: {webview.__file__}')"
           python -c "import webview; from pathlib import Path; p = Path(webview.__file__).parent / 'platforms'; print(f'platforms exists: {p.exists()}'); print(f'platforms contents: {list(p.glob(\"*\")) if p.exists() else \"N/A\"}')"
 
+          # winforms.py の存在確認
+          python -c "import webview; from pathlib import Path; p = Path(webview.__file__).parent / 'platforms' / 'winforms.py'; assert p.exists(), f'winforms.py not found at {p}'; print(f'winforms.py verified: {p}')"
+
           Write-Host ""
           Write-Host "=== pythonnet/clr Check ==="
           python -c "import clr_loader; print(f'clr_loader version: {getattr(clr_loader, \"__version__\", \"unknown\")}')"
           python -c "import pythonnet; print(f'pythonnet location: {pythonnet.__file__}')"
 
+          # Python.Runtime.dll の確認
+          python -c "from pathlib import Path; import pythonnet; p = Path(pythonnet.__file__).parent; dlls = list(p.rglob('Python.Runtime.dll')); print(f'Python.Runtime.dll found: {dlls}')"
+
           Write-Host ""
-          Write-Host "=== pip freeze ==="
+          Write-Host "=== pip freeze (relevant packages) ==="
           pip freeze | Select-String -Pattern "webview|pythonnet|clr"
 
       - name: Build with PyInstaller
@@ -287,28 +312,48 @@ jobs:
 
           Write-Host ""
           Write-Host "=== webview/platforms in dist ==="
-          if (Test-Path "dist\GaQ_Transcriber\_internal\webview\platforms") {
+          $winformsPath = "dist\GaQ_Transcriber\_internal\webview\platforms\winforms.py"
+          if (Test-Path $winformsPath) {
+            Write-Host "winforms.py found at: $winformsPath"
             Get-ChildItem "dist\GaQ_Transcriber\_internal\webview\platforms" -Recurse
           } else {
-            Write-Host "WARNING: webview/platforms not found in dist!"
-            # 代替パスを確認
+            Write-Host "FATAL: webview/platforms/winforms.py not found in dist!"
             Write-Host "Searching for winforms.py..."
-            Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "winforms.py" -ErrorAction SilentlyContinue
+            $found = Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "winforms.py" -ErrorAction SilentlyContinue
+            if ($found) {
+              Write-Host "Found at alternative location: $($found.FullName)"
+            } else {
+              Write-Host "winforms.py not found anywhere in dist - BUILD WILL FAIL AT RUNTIME"
+              exit 1
+            }
           }
 
           Write-Host ""
-          Write-Host "=== pythonnet in dist ==="
-          if (Test-Path "dist\GaQ_Transcriber\_internal\pythonnet") {
-            Get-ChildItem "dist\GaQ_Transcriber\_internal\pythonnet" -Recurse
+          Write-Host "=== pythonnet/Python.Runtime.dll in dist ==="
+          $runtimeDlls = Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "Python.Runtime.dll" -ErrorAction SilentlyContinue
+          if ($runtimeDlls) {
+            foreach ($dll in $runtimeDlls) {
+              Write-Host "Found: $($dll.FullName)"
+              Write-Host "  Size: $($dll.Length) bytes"
+              # DLLのアーキテクチャを確認（簡易チェック）
+              $bytes = [System.IO.File]::ReadAllBytes($dll.FullName)
+              # PE32: 0x014c (i386), PE32+: 0x8664 (AMD64)
+              $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+              $machineType = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+              $archStr = switch ($machineType) {
+                0x014c { "x86 (32-bit) - WARNING: May cause issues!" }
+                0x8664 { "x64 (64-bit) - OK" }
+                default { "Unknown ($machineType)" }
+              }
+              Write-Host "  Architecture: $archStr"
+            }
           } else {
-            Write-Host "Searching for pythonnet files..."
-            Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "*pythonnet*" -ErrorAction SilentlyContinue
-            Get-ChildItem "dist\GaQ_Transcriber\_internal" -Recurse -Filter "Python.Runtime.dll" -ErrorAction SilentlyContinue
+            Write-Host "WARNING: Python.Runtime.dll not found in dist"
           }
 
           Write-Host ""
-          Write-Host "=== pip freeze ==="
-          pip freeze
+          Write-Host "=== Installed package versions ==="
+          pip freeze | Select-String -Pattern "webview|pythonnet|clr|pyinstaller"
 
       - name: Upload build log
         if: always()
