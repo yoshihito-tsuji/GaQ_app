@@ -11,7 +11,7 @@ GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
 
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 # ソースコードディレクトリ
 src_dir = Path('src')
@@ -58,10 +58,8 @@ hiddenimports = [
     'av',
     # pywebview (EdgeChromium優先。pythonnet/winformsも同梱し、フォールバック可)
     'webview',
-    'webview.platforms',
-    'webview.platforms.edgechromium',
-    'webview.platforms.winforms',
-    'webview.platforms.winforms_app',
+    # platforms 配下を網羅的に収集
+    *collect_submodules('webview.platforms'),
     # pywin32 / pythonnet 依存
     'pythoncom',
     'pywintypes',
@@ -104,7 +102,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     runtime_tmpdir=None,
     console=False,  # コンソールウィンドウを表示しない
     disable_windowed_traceback=False,
