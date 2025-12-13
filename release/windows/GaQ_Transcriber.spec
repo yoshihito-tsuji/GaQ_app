@@ -38,6 +38,7 @@ hiddenimports = [
     'av',
     # pywebview (EdgeChromium backend only - exclude winforms/pythonnet)
     'webview',
+    'webview.platforms',
     'webview.platforms.edgechromium',
     'bottle',
     'proxy_tools',
