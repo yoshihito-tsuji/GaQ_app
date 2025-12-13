@@ -120,6 +120,9 @@ def setup_pythonnet():
 # FastAPIサーバープロセスのグローバル参照（終了時に使用）
 server_process = None
 
+# ブラウザモードフラグ（pythonnet初期化失敗時にTrue）
+USE_BROWSER_MODE = False
+
 
 def acquire_single_instance_lock():
     """
@@ -1198,11 +1201,95 @@ def create_webview_window(host: str = "127.0.0.1", port: int = 8000):
     else:
         webview_private_mode = private_mode_env.lower() not in {"0", "false", "no"}
 
-    # Windows: winforms (WebView2) バックエンドを明示的に指定
-    if IS_WINDOWS:
-        webview.start(debug=webview_debug, private_mode=webview_private_mode, gui='winforms')
+    # ブラウザモードかネイティブウィンドウモードかで分岐
+    if USE_BROWSER_MODE:
+        # ブラウザモード: アプリモードで開く（pythonnet不要、UIすっきり）
+        import shutil
+
+        logger.info(f"🌐 ブラウザアプリモードで開きます: {url}")
+
+        # Edge または Chrome をアプリモードで起動
+        browser_process = None
+
+        # Edge を優先的に探す（Windows標準）
+        edge_path = shutil.which("msedge")
+        if not edge_path:
+            # 標準インストールパスを確認
+            edge_candidates = [
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            ]
+            for candidate in edge_candidates:
+                if os.path.exists(candidate):
+                    edge_path = candidate
+                    break
+
+        # Chrome をフォールバックとして探す
+        chrome_path = shutil.which("chrome") or shutil.which("google-chrome")
+        if not chrome_path:
+            chrome_candidates = [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            ]
+            for candidate in chrome_candidates:
+                if os.path.exists(candidate):
+                    chrome_path = candidate
+                    break
+
+        # アプリモードで起動
+        if edge_path:
+            logger.info(f"🌐 Microsoft Edge アプリモードで起動: {edge_path}")
+            browser_process = subprocess.Popen([
+                edge_path,
+                f"--app={url}",
+                "--new-window",
+                "--disable-extensions",
+            ])
+        elif chrome_path:
+            logger.info(f"🌐 Google Chrome アプリモードで起動: {chrome_path}")
+            browser_process = subprocess.Popen([
+                chrome_path,
+                f"--app={url}",
+                "--new-window",
+                "--disable-extensions",
+            ])
+        else:
+            # フォールバック: 通常のブラウザで開く
+            import webbrowser
+            logger.warning("⚠️ Edge/Chrome が見つかりません。通常ブラウザで開きます")
+            webbrowser.open(url)
+
+        # ブラウザプロセスの終了を待機
+        if browser_process:
+            logger.info("🕐 ブラウザウィンドウの終了を待機中...")
+            browser_process.wait()
+            logger.info("🛑 ブラウザウィンドウが閉じられました")
+        else:
+            # 通常ブラウザの場合はダイアログで待機
+            try:
+                import ctypes
+                MB_OK = 0x0
+                MB_ICONINFORMATION = 0x40
+                ctypes.windll.user32.MessageBoxW(
+                    0,
+                    "GaQ Offline Transcriber がブラウザで開きました。\n\n"
+                    "このダイアログを閉じるとアプリケーションが終了します。\n"
+                    "文字起こし作業中はこのダイアログを閉じないでください。",
+                    "GaQ Offline Transcriber - ブラウザモード",
+                    MB_OK | MB_ICONINFORMATION
+                )
+            except Exception as e:
+                logger.error(f"❌ ダイアログ表示エラー: {e}")
+                input("Enterキーを押すと終了します...")
+
+        logger.info("🛑 ブラウザモード終了")
+        shutdown_server()
     else:
-        webview.start(debug=webview_debug, private_mode=webview_private_mode)
+        # ネイティブウィンドウモード: pywebview + winforms
+        if IS_WINDOWS:
+            webview.start(debug=webview_debug, private_mode=webview_private_mode, gui='winforms')
+        else:
+            webview.start(debug=webview_debug, private_mode=webview_private_mode)
 
 
 def main():
@@ -1218,21 +1305,34 @@ def main():
         sys.exit(1)
 
     # pythonnet を事前初期化（GitHub配布版の起動失敗対策）
-    if IS_WINDOWS and not setup_pythonnet():
-        try:
-            import ctypes
-            MB_OK = 0x0
-            MB_ICONERROR = 0x10
-            ctypes.windll.user32.MessageBoxW(
-                0,
-                "必要なコンポーネント（pythonnet）の読み込みに失敗しました。\n"
-                "最新の ZIP を再ダウンロードしても解決しない場合は、ログを添えて開発者に連絡してください。",
-                "GaQ Offline Transcriber - 起動エラー",
-                MB_OK | MB_ICONERROR
-            )
-        except Exception:
-            pass
-        sys.exit(1)
+    # 失敗時はブラウザモードにフォールバック
+    global USE_BROWSER_MODE
+    use_native = os.environ.get("GAQ_USE_NATIVE_WINDOW", "0") == "1"
+
+    if IS_WINDOWS:
+        if use_native:
+            # ネイティブウィンドウを強制使用
+            if not setup_pythonnet():
+                try:
+                    import ctypes
+                    MB_OK = 0x0
+                    MB_ICONERROR = 0x10
+                    ctypes.windll.user32.MessageBoxW(
+                        0,
+                        "必要なコンポーネント（pythonnet）の読み込みに失敗しました。\n"
+                        "ネイティブウィンドウモードを使用するには .NET Framework が必要です。\n"
+                        "ブラウザモードで起動するには GAQ_USE_NATIVE_WINDOW 環境変数を削除してください。",
+                        "GaQ Offline Transcriber - 起動エラー",
+                        MB_OK | MB_ICONERROR
+                    )
+                except Exception:
+                    pass
+                sys.exit(1)
+            logger.info("🖥️ ネイティブウィンドウモードで起動")
+        else:
+            # デフォルト: ブラウザモード（pythonnet不要）
+            USE_BROWSER_MODE = True
+            logger.info("🌐 ブラウザモードで起動（pythonnet不要）")
 
     # 単一インスタンスチェック
     if not acquire_single_instance_lock():
