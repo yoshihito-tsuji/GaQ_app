@@ -2,7 +2,7 @@
 
 """
 GaQ Offline Transcriber - Windows版 PyInstaller設定ファイル
-v1.2.8 - pythonnet 3.x PYTHONNET_PYDLL問題修正
+v1.2.9 - pythonnet 3.x PYTHONNET_PYDLL問題修正
 """
 
 import os
