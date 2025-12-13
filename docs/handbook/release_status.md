@@ -1,11 +1,11 @@
 # Release Status & Distribution
 
-GaQ Offline Transcriber は macOS / Windows の双方で v1.1.1 を提供中です。配布状況と直近の改善内容をここに集約し、README から参照可能な新しい情報ハブとしました。
+GaQ Offline Transcriber は macOS v1.1.1 / Windows v1.2.9 を提供中です。配布状況と直近の改善内容をここに集約し、README から参照可能な新しい情報ハブとしました。
 
 ## 現行バージョン
 
 - **Mac**: v1.1.1（pywebview 課題をすべて解消、実運用可能）
-- **Windows**: v1.1.1（クリップボード関連の API 定義を修正）
+- **Windows**: v1.2.9（pythonnet 初期化失敗で起動できない GitHub ZIP を修正。v1.2.3 以前は再ダウンロード推奨）
 - **文字起こしエンジン**: faster-whisper（Medium / Large-v3）
 
 ## コード署名・公証の状況
@@ -42,11 +42,10 @@ GaQ Offline Transcriber は macOS / Windows の双方で v1.1.1 を提供中で�
 
 ### Windows版
 
-- 搭載バージョン: v1.1.1 Portable ZIP（139MB）
-  `C0A423E91310702AAAFCE6896F63C493A05249C20A01CEC39401AA6D796E48CB`
+- 搭載バージョン: v1.2.9 Portable ZIP（pythonnet 初期化失敗で起動しない問題を修正）
 - 配布形式: ZIP 解凍 → `GaQ_Transcriber.exe` 実行（インストーラ版は署名準備中）
-- 修正内容: クリップボードコピーでの Windows API 型定義を追加
-- リリース配布: GitHub Releases への掲載準備中（暫定で手動共有）
+- 修正内容: pythonnet を事前初期化して GitHub ダウンロード版が起動しない不具合を解消
+- リリース配布: GitHub Releases から最新版 ZIP を取得（旧 v1.2.3 以前は再ダウンロード推奨）
 
 ### オフライン動作
 

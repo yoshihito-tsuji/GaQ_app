@@ -59,6 +59,64 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Windows版: pythonnet / WebView2 を事前初期化
+def setup_pythonnet():
+    """
+    GitHub配布版で pythonnet が見つからず起動に失敗する問題の防止。
+    Returns:
+        bool: 初期化成功なら True
+    """
+    if not IS_WINDOWS:
+        return True
+
+    try:
+        base_dir = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+        internal_dir = base_dir / "_internal" if getattr(sys, "frozen", False) else base_dir
+
+        python_dll_path = None
+        python_dll_candidates = [
+            internal_dir / f"python{sys.version_info.major}{sys.version_info.minor}.dll",
+            internal_dir / "python3.dll",
+        ]
+        for candidate in python_dll_candidates:
+            if candidate.exists():
+                python_dll_path = candidate
+                break
+
+        runtime_dir = internal_dir / "pythonnet" / "runtime"
+        runtime_dll = runtime_dir / "Python.Runtime.dll"
+
+        if python_dll_path:
+            os.environ.setdefault("PYTHONNET_PYDLL", str(python_dll_path))
+        else:
+            logger.error("❌ [pythonnet] Python DLL が見つかりませんでした: %s", python_dll_candidates)
+            return False
+
+        if not runtime_dll.exists():
+            logger.error("❌ [pythonnet] Python.Runtime.dll が見つかりませんでした: %s", runtime_dll)
+            return False
+
+        os.environ.setdefault("PYTHONNET_RUNTIME", "netfx")
+
+        import pythonnet
+
+        # PyInstaller 環境では __file__ が PYZ 内になる場合があるため runtime パスを明示
+        if getattr(sys, "frozen", False) and runtime_dir.parent.exists():
+            pythonnet.__file__ = str(runtime_dir.parent / "__init__.py")
+            pythonnet.__path__ = [str(runtime_dir.parent)]
+
+        pythonnet.load("netfx")
+        logger.info(
+            "✅ [pythonnet] 初期化に成功: runtime=%s / python_dll=%s / __file__=%s",
+            runtime_dll,
+            python_dll_path,
+            pythonnet.__file__,
+        )
+        return True
+    except Exception as exc:
+        logger.error("❌ [pythonnet] 初期化に失敗しました: %s", exc, exc_info=True)
+        return False
+
 # FastAPIサーバープロセスのグローバル参照（終了時に使用）
 server_process = None
 
@@ -1157,6 +1215,23 @@ def main():
     if IS_WINDOWS and not check_webview2_runtime():
         show_webview2_missing_dialog()
         logger.error("=== WebView2ランタイムが見つからないため終了します ===")
+        sys.exit(1)
+
+    # pythonnet を事前初期化（GitHub配布版の起動失敗対策）
+    if IS_WINDOWS and not setup_pythonnet():
+        try:
+            import ctypes
+            MB_OK = 0x0
+            MB_ICONERROR = 0x10
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "必要なコンポーネント（pythonnet）の読み込みに失敗しました。\n"
+                "最新の ZIP を再ダウンロードしても解決しない場合は、ログを添えて開発者に連絡してください。",
+                "GaQ Offline Transcriber - 起動エラー",
+                MB_OK | MB_ICONERROR
+            )
+        except Exception:
+            pass
         sys.exit(1)
 
     # 単一インスタンスチェック
