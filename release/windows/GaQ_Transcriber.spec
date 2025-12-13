@@ -40,6 +40,12 @@ hiddenimports = [
     'webview',
     'webview.platforms',
     'webview.platforms.edgechromium',
+    # EdgeChromium backend が依存する pywin32 系
+    'pythoncom',
+    'pywintypes',
+    'win32api',
+    'win32com',
+    'win32com.client',
     'bottle',
     'proxy_tools',
 ]
