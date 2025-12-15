@@ -31,6 +31,10 @@
   - [Windows v1.2.10](https://github.com/yoshihito-tsuji/GaQ_app/releases/tag/v1.2.10)（ブラウザアプリモード採用、安定動作）
 - 詳しい配布状況と改善内容は `docs/handbook/release_status.md` を参照
 
+### 今後の方針
+- 直近の最優先課題は「v1 の安定動作」の追求（既存機能の堅牢化）
+- 次段として「v2 で話者分離機能を追加」する計画（ローカル実行を想定）
+
 ### Windows版 v1.2.10 の変更点
 
 **v1.2.9 以前をお使いの方は、v1.2.10 への更新を推奨します。**
